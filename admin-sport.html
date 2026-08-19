@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pentadbir Sukan — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="mock-data.js"></script>
+<script>
+  // Auth gate, run before <body> parses so protected content never flashes.
+  // Same client-only demo-auth as admin.html — this page has no login form
+  // of its own, it just bounces unauthenticated visitors to admin.html.
+  if(!AUTH.isLoggedIn()){
+    location.replace('admin.html');
+  }
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Pentadbir Jurucatat Skor</span>
+      </div>
+    </a>
+    <div class="nav-actions" id="navActions"></div>
+  </div>
+</header>
+
+<main class="wrap" id="mainArea">
+  <a class="btn btn--ghost btn--sm" href="admin.html" style="margin-top:var(--sp-5);">← Kembali</a>
+
+  <div class="admin-toolbar">
+    <h1 class="page-title" id="sportPageTitle">Sukan</h1>
+  </div>
+  <div class="chip-row" id="sportDayChips" style="margin-bottom:20px;"></div>
+  <div id="sportMatchList" class="admin-list"></div>
+</main>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+(function(){
+  // ---------------- NAV (same pattern as admin.html's logged-in state) ----------------
+  function renderNav(){
+    const nav = document.getElementById('navActions');
+    nav.innerHTML = `
+      <span class="muted" style="color:rgba(251,245,234,0.75);font-size:0.8rem;">${AUTH.currentUser()}</span>
+      <a class="nav-link" href="standings.html">Kedudukan</a>
+      <a class="nav-link" href="schedule.html" target="_blank">Lihat Laman Awam ↗</a>
+      <button class="nav-link nav-link--gold" id="logoutBtn" type="button">Log Keluar</button>`;
+    // no login form on this page — logging out here has nowhere protected
+    // left to show, so send the user back to admin.html
+    document.getElementById('logoutBtn').addEventListener('click', () => { AUTH.logout(); location.href = 'admin.html'; });
+  }
+  renderNav();
+
+  // ---------------- URL PARAMS ----------------
+  const params = new URLSearchParams(location.search);
+  const sportParam = params.get('sport');
+  const categoryParam = params.get('category'); // null/absent is valid — sports with no categories
+
+  const displayLabel = sportDisplayLabel(sportParam, categoryParam);
+  document.getElementById('sportPageTitle').textContent = displayLabel;
+  document.title = `${displayLabel} — Pentadbir PESAWI 2026`;
+
+  // ---------------- DAY FILTER (same chip pattern as admin.html) ----------------
+  let dayFilter = 'all';
+  let allMatches = [];
+
+  const dayChips = document.getElementById('sportDayChips');
+  dayChips.innerHTML = `<button class="chip is-active" data-day="all" type="button">Semua Hari</button>` +
+    EVENT_DAYS.map((iso,i) => {
+      const { short } = dayLabel(iso);
+      return `<button class="chip" data-day="${iso}" type="button">Hari ${i+1}<small>${short}</small></button>`;
+    }).join('');
+  dayChips.addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if(!btn) return;
+    dayFilter = btn.dataset.day;
+    dayChips.querySelectorAll('.chip').forEach(c => c.classList.toggle('is-active', c === btn));
+    render();
+  });
+
+  // ---------------- LIST ----------------
+  function sportEmptyStateHTML(){
+    return `<div class="card empty-state">
+      <div class="empty-state__icon">📋</div>
+      <div class="empty-state__title">Tiada perlawanan untuk sukan/kategori ini</div>
+      <p class="muted">Cuba hari lain, atau kembali ke senarai penuh.</p>
+    </div>`;
+  }
+
+  function sportLoadingHTML(){
+    return Array.from({length:2}).map(() => `
+      <div class="skeleton-card" style="height:220px;">
+        <div class="skeleton-line" style="width:35%;height:14px;margin-bottom:18px;"></div>
+        <div class="skeleton-line" style="width:60%;height:22px;margin-bottom:24px;"></div>
+        <div class="skeleton-line" style="width:100%;height:64px;margin-bottom:18px;"></div>
+        <div class="skeleton-line" style="width:80%;height:38px;"></div>
+      </div>`).join('');
+  }
+
+  function render(){
+    const list = document.getElementById('sportMatchList');
+    const filtered = allMatches
+      .filter(m => m.sport === sportParam)
+      .filter(m => !categoryParam || m.category === categoryParam)
+      .filter(m => dayFilter === 'all' || m.date === dayFilter);
+    list.innerHTML = filtered.length === 0 ? sportEmptyStateHTML() : filtered.map(adminMatchHTML).join('');
+  }
+
+  // "Edit Butiran" has no form modal on this page (scope cut — see summary),
+  // so it just sends the scorekeeper to admin.html where editing works today
+  wireAdminMatchEvents(document.getElementById('sportMatchList'), () => { location.href = 'admin.html'; });
+
+  // ---- show skeletons briefly, then subscribe (same simulated-fetch
+  // pattern as every other page in this app) ----
+  document.getElementById('sportMatchList').innerHTML = sportLoadingHTML();
+  setTimeout(() => {
+    MatchStore.subscribe(matches => {
+      allMatches = matches;
+      render();
+    });
+  }, 650);
+})();
+</script>
+</body>
+</html>

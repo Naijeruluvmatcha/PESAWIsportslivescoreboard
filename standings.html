@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kedudukan Rumah — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Skor langsung · paparan awam</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="schedule.html">Jadual Perlawanan</a>
+      <a class="nav-link nav-link--gold" href="admin.html">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
+        Jurucatat Skor
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="standings-lead">
+    <h1 class="page-title">Kedudukan Rumah</h1>
+    <p class="muted">Merentasi semua sukan · dikemas kini secara langsung</p>
+  </div>
+
+  <div id="leaderboardArea"></div>
+
+  <section id="breakdownSection">
+    <h2 class="section-title" style="padding-bottom:var(--sp-4);">Pecahan Mengikut Sukan</h2>
+    <div class="sport-breakdown-grid" id="breakdownGrid"></div>
+  </section>
+</main>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  const HOUSE_COLORS = {
+    'Rumah Merah': 'var(--house-merah)',
+    'Rumah Biru': 'var(--house-biru)',
+    'Rumah Kuning': 'var(--house-kuning)',
+    'Rumah Hijau': 'var(--house-hijau)',
+  };
+  function houseColor(name){ return HOUSE_COLORS[name] || 'var(--ink-400)'; }
+
+  // sportCatKey() and computeStandings() now live in mock-data.js (shared
+  // with sport.html)
+
+  // every sport+category combo that could ever appear, in SPORTS order —
+  // filtered down to ones with actual finished matches at render time
+  function sportCategoryCombos(){
+    const combos = [];
+    SPORTS.forEach(s => {
+      if(s.categories && s.categories.length){
+        s.categories.forEach(c => combos.push({ sportId: s.id, categoryId: c.id }));
+      } else {
+        combos.push({ sportId: s.id, categoryId: null });
+      }
+    });
+    return combos;
+  }
+
+  function leaderboardHTML(standings){
+    const rows = standings.map((h,i) => {
+      const rank = i+1;
+      return `
+      <tr class="standings-row${rank===1 ? ' is-leader' : ''}">
+        <td data-label="Kedudukan"><span class="rank-badge">#${rank}</span>${rank===1 ? ' 🏆' : ''}</td>
+        <td data-label="Rumah"><span class="house-name"><span class="house-dot" style="background:${houseColor(h.name)}"></span>${escapeHtml(h.name)}</span></td>
+        <td data-label="M">${h.wins}</td>
+        <td data-label="S">${h.draws}</td>
+        <td data-label="K">${h.losses}</td>
+        <td data-label="Mata" class="standings-points">${h.points}</td>
+      </tr>`;
+    }).join('');
+    return `
+    <div class="card standings-card">
+      <table class="standings-table">
+        <thead>
+          <tr><th>Kedudukan</th><th>Rumah</th><th>M</th><th>S</th><th>K</th><th>Mata</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function breakdownCardHTML(combo, standings){
+    const meta = sportMeta(combo.sportId);
+    const key = sportCatKey(combo.sportId, combo.categoryId);
+    const rows = standings.map(h => {
+      const ps = h.perSport[key] || { w:0, d:0, l:0 };
+      return `
+      <li class="sport-breakdown-row">
+        <span class="house-name"><span class="house-dot" style="background:${houseColor(h.name)}"></span>${escapeHtml(h.name)}</span>
+        <span class="wdl">${ps.w}-${ps.d}-${ps.l}</span>
+      </li>`;
+    }).join('');
+    return `
+    <div class="card sport-breakdown-card">
+      <div class="sport-breakdown-card__head">
+        <span class="sport-icon">${meta.icon}</span>
+        <span class="section-title">${sportDisplayLabel(combo.sportId, combo.categoryId)}</span>
+      </div>
+      <ul class="sport-breakdown-list">${rows}</ul>
+    </div>`;
+  }
+
+  function emptyStateHTML(){
+    return `<div class="empty-state">
+      <div class="empty-state__icon">🏆</div>
+      <div class="empty-state__title">Belum ada keputusan perlawanan</div>
+      <p class="muted">Kedudukan akan dikemas kini sebaik sahaja perlawanan pertama tamat.</p>
+    </div>`;
+  }
+
+  function loadingHTML(){
+    return `<div class="standings-loading">` + Array.from({length:4}).map(() => `
+      <div class="skeleton-card" style="height:52px; display:flex; align-items:center; padding:0 var(--sp-5);">
+        <div class="skeleton-line" style="width:50%;height:16px;"></div>
+      </div>`).join('') + `</div>`;
+  }
+
+  function render(matches){
+    const standings = computeStandings(matches);
+    const leaderboardArea = document.getElementById('leaderboardArea');
+    const breakdownSection = document.getElementById('breakdownSection');
+    const breakdownGrid = document.getElementById('breakdownGrid');
+
+    if(standings.length === 0){
+      leaderboardArea.innerHTML = emptyStateHTML();
+      breakdownSection.style.display = 'none';
+      return;
+    }
+
+    leaderboardArea.innerHTML = leaderboardHTML(standings);
+
+    const combosWithResults = sportCategoryCombos().filter(({sportId, categoryId}) =>
+      matches.some(m => m.status === 'finished' && m.sport === sportId && m.category === categoryId)
+    );
+    if(combosWithResults.length === 0){
+      breakdownSection.style.display = 'none';
+    } else {
+      breakdownSection.style.display = 'block';
+      breakdownGrid.innerHTML = combosWithResults.map(c => breakdownCardHTML(c, standings)).join('');
+    }
+  }
+
+  // ---- initial load: show skeletons briefly, then subscribe (mimics an
+  // initial Firestore fetch before onSnapshot starts pushing updates) ----
+  document.getElementById('breakdownSection').style.display = 'none';
+  document.getElementById('leaderboardArea').innerHTML = loadingHTML();
+  setTimeout(() => {
+    MatchStore.subscribe(matches => { render(matches); });
+  }, 650);
+})();
+</script>
+</body>
+</html>

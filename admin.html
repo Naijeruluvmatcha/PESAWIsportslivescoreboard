@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pentadbir Jurucatat Skor — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Pentadbir Jurucatat Skor</span>
+      </div>
+    </a>
+    <div class="nav-actions" id="navActions"></div>
+  </div>
+</header>
+
+<main class="wrap" id="mainArea">
+
+  <!-- LOGIN -->
+  <div class="login-screen" id="loginScreen">
+    <div class="card login-card">
+      <div class="login-card__head">
+        <img class="login-card__mark" src="assets/pesawi-lockup.png" alt="Logo PESAWI" style="width:auto;height:120px;border-radius:0;background:none;object-fit:contain;" />
+        <h1 class="page-title" style="font-size:1.3rem;">Log Masuk Jurucatat Skor</h1>
+        <p class="muted">Log masuk untuk mengemas kini skor perlawanan dan menguruskan jadual.</p>
+      </div>
+      <form id="loginForm">
+        <div class="field">
+          <label for="loginEmail">Emel</label>
+          <input class="input" type="email" id="loginEmail" autocomplete="username" required />
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label for="loginPassword">Kata Laluan</label>
+          <input class="input" type="password" id="loginPassword" autocomplete="current-password" required />
+        </div>
+        <p class="field-error" id="loginError" style="display:none; margin-top:10px;">Emel atau kata laluan salah.</p>
+        <button class="btn btn--primary btn--block" type="submit" style="margin-top:18px;">Log Masuk</button>
+      </form>
+      <div class="login-hint">Log masuk demo: <strong>scorekeeper1@example.com</strong> / <strong>demo1234</strong></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="adminDashboard" style="display:none;">
+    <div class="admin-toolbar">
+      <h1 class="page-title">Pengurusan Perlawanan</h1>
+      <button class="btn btn--gold" id="newMatchBtn" type="button">+ Perlawanan Baharu</button>
+    </div>
+    <div class="chip-row" id="adminDayChips" style="margin-bottom:20px;"></div>
+    <div id="adminList" class="admin-list"></div>
+  </div>
+
+</main>
+
+<!-- MATCH FORM -->
+<div class="overlay" id="formOverlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal__head">
+      <span class="eyebrow" id="formTitle">Perlawanan Baharu</span>
+      <button class="modal__close" id="closeForm" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal__body">
+      <form id="matchForm">
+        <input type="hidden" id="formId" />
+        <div class="field-row">
+          <div class="field">
+            <label for="formSport">Sukan</label>
+            <div class="select-field">
+              <select class="input" id="formSport"></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div class="field">
+            <label for="formVenue">Tempat</label>
+            <div class="select-field">
+              <select class="input" id="formVenue"></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="field" id="formCategoryField" style="margin-top:16px; display:none;">
+          <label for="formCategory">Kategori</label>
+          <div class="select-field">
+            <select class="input" id="formCategory"></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </div>
+        <div class="field-row" style="margin-top:16px;">
+          <div class="field">
+            <label for="formGroupA">Kumpulan / Pasukan A</label>
+            <input class="input" id="formGroupA" maxlength="60" required />
+          </div>
+          <div class="field">
+            <label for="formGroupB">Kumpulan / Pasukan B</label>
+            <input class="input" id="formGroupB" maxlength="60" required />
+          </div>
+        </div>
+        <div class="field" style="margin-top:16px;">
+          <label for="formDate">Hari</label>
+          <div class="select-field">
+            <select class="input" id="formDate"></select>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </div>
+        <div class="field" style="margin-top:16px;">
+          <label for="formTiktok">URL Siaran Langsung TikTok <span class="field-hint">— pilihan, biarkan kosong jika belum bersiaran</span></label>
+          <input class="input" id="formTiktok" type="url" placeholder="https://www.tiktok.com/@..." />
+        </div>
+        <button class="btn btn--primary btn--block" type="submit" style="margin-top:20px;">Simpan Perlawanan</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  let unsubscribe = null;
+  let dashboardLoading = false;
+  let allMatches = [];
+  let adminDayFilter = 'all';
+
+  // ---------------- NAV ----------------
+  function renderNav(){
+    const nav = document.getElementById('navActions');
+    if(AUTH.isLoggedIn()){
+      nav.innerHTML = `
+        <span class="muted" style="color:rgba(251,245,234,0.75);font-size:0.8rem;">${AUTH.currentUser()}</span>
+        <a class="nav-link" href="standings.html">Kedudukan</a>
+        <a class="nav-link" href="schedule.html" target="_blank">Lihat Laman Awam ↗</a>
+        <button class="nav-link nav-link--gold" id="logoutBtn" type="button">Log Keluar</button>`;
+      document.getElementById('logoutBtn').addEventListener('click', () => { AUTH.logout(); renderNav(); showLogin(); });
+    } else {
+      nav.innerHTML = `<a class="nav-link" href="standings.html">Kedudukan</a><a class="nav-link" href="schedule.html">Lihat Laman Awam ↗</a>`;
+    }
+  }
+
+  // ---------------- LOGIN ----------------
+  document.getElementById('loginForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const pw = document.getElementById('loginPassword').value;
+    if(AUTH.login(email, pw)){
+      document.getElementById('loginError').style.display = 'none';
+      renderNav();
+      showApp();
+    } else {
+      document.getElementById('loginError').style.display = 'block';
+    }
+  });
+
+  function showLogin(){
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('adminDashboard').style.display = 'none';
+  }
+  function showApp(){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('adminDashboard').style.display = 'block';
+    initDashboardOnce();
+  }
+
+  // ---------------- DASHBOARD ----------------
+  function initDashboardOnce(){
+    if(unsubscribe || dashboardLoading) return;
+    dashboardLoading = true;
+
+    // day filter chips
+    const dayChips = document.getElementById('adminDayChips');
+    dayChips.innerHTML = `<button class="chip is-active" data-day="all" type="button">Semua Hari</button>` +
+      EVENT_DAYS.map((iso,i) => {
+        const { short } = dayLabel(iso);
+        return `<button class="chip" data-day="${iso}" type="button">Hari ${i+1}<small>${short}</small></button>`;
+      }).join('');
+    dayChips.addEventListener('click', e => {
+      const btn = e.target.closest('.chip');
+      if(!btn) return;
+      adminDayFilter = btn.dataset.day;
+      dayChips.querySelectorAll('.chip').forEach(c => c.classList.toggle('is-active', c === btn));
+      renderAdminList();
+    });
+
+    // ---- show skeletons briefly, then subscribe (same simulated-fetch
+    // pattern as schedule.html, mirroring the eventual onSnapshot() latency
+    // documented in mock-data.js) ----
+    document.getElementById('adminList').innerHTML = adminLoadingHTML();
+    setTimeout(() => {
+      unsubscribe = MatchStore.subscribe(matches => {
+        allMatches = matches;
+        renderAdminList();
+      });
+    }, 650);
+  }
+
+  function adminLoadingHTML(){
+    return Array.from({length:3}).map(() => `
+      <div class="skeleton-card" style="height:220px;">
+        <div class="skeleton-line" style="width:35%;height:14px;margin-bottom:18px;"></div>
+        <div class="skeleton-line" style="width:60%;height:22px;margin-bottom:24px;"></div>
+        <div class="skeleton-line" style="width:100%;height:64px;margin-bottom:18px;"></div>
+        <div class="skeleton-line" style="width:80%;height:38px;"></div>
+      </div>`).join('');
+  }
+
+  function adminEmptyStateHTML(){
+    return `<div class="card empty-state">
+      <div class="empty-state__icon">📋</div>
+      <div class="empty-state__title">Tiada perlawanan untuk hari ini</div>
+      <p class="muted">Cipta satu dengan "+ Perlawanan Baharu" di atas.</p>
+    </div>`;
+  }
+
+  // simpleScorePanelHTML/setsScorePanelHTML/countdownScorePanelHTML/
+  // adminMatchHTML now live in mock-data.js (shared with admin-sport.html)
+
+  function renderAdminList(){
+    const list = document.getElementById('adminList');
+    const filtered = adminDayFilter === 'all' ? allMatches : allMatches.filter(m => m.date === adminDayFilter);
+    list.innerHTML = filtered.length === 0 ? adminEmptyStateHTML() : filtered.map(adminMatchHTML).join('');
+  }
+
+  // event delegation for the match list — now shared with admin-sport.html.
+  // "Edit Butiran" opens this page's own form modal via openForm().
+  wireAdminMatchEvents(document.getElementById('adminList'), match => openForm(match));
+
+  // ---------------- MATCH FORM ----------------
+  const formOverlay = document.getElementById('formOverlay');
+  document.getElementById('formSport').innerHTML = SPORTS.map(s => `<option value="${s.id}">${s.icon} ${s.label}</option>`).join('');
+  document.getElementById('formVenue').innerHTML = VENUES.map(v => `<option value="${v}">${v}</option>`).join('');
+  document.getElementById('formDate').innerHTML = EVENT_DAYS.map((iso,i) => {
+    const { short } = dayLabel(iso);
+    return `<option value="${iso}">Day ${i+1} — ${short}</option>`;
+  }).join('');
+
+  // category selector only exists for sports with a categories list — hidden
+  // and cleared entirely (no disabled empty dropdown left behind) otherwise
+  const formCategoryField = document.getElementById('formCategoryField');
+  const formCategorySelect = document.getElementById('formCategory');
+  function updateCategoryField(sportId, selectedCategoryId){
+    const categories = sportMeta(sportId).categories;
+    if(categories && categories.length){
+      formCategoryField.style.display = '';
+      formCategorySelect.innerHTML = categories.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+      formCategorySelect.value = categories.some(c => c.id === selectedCategoryId) ? selectedCategoryId : categories[0].id;
+      formCategorySelect.required = true;
+    } else {
+      formCategoryField.style.display = 'none';
+      formCategorySelect.innerHTML = '';
+      formCategorySelect.required = false;
+    }
+  }
+  document.getElementById('formSport').addEventListener('change', () => {
+    updateCategoryField(document.getElementById('formSport').value, null);
+  });
+
+  function openForm(match){
+    const isEdit = !!match;
+    document.getElementById('formTitle').textContent = isEdit ? 'Edit Perlawanan' : 'Perlawanan Baharu';
+    document.getElementById('formId').value = isEdit ? match.id : '';
+    const sportId = isEdit ? match.sport : SPORTS[0].id;
+    document.getElementById('formSport').value = sportId;
+    document.getElementById('formVenue').value = isEdit ? match.venue : VENUES[0];
+    updateCategoryField(sportId, isEdit ? match.category : null);
+    document.getElementById('formGroupA').value = isEdit ? match.groupA : '';
+    document.getElementById('formGroupB').value = isEdit ? match.groupB : '';
+    document.getElementById('formDate').value = isEdit ? match.date : EVENT_DAYS[0];
+    document.getElementById('formTiktok').value = isEdit ? (match.tiktokLiveUrl || '') : '';
+    formOverlay.classList.add('is-open');
+    document.getElementById('formGroupA').focus();
+  }
+  function closeForm(){ formOverlay.classList.remove('is-open'); }
+
+  document.getElementById('newMatchBtn').addEventListener('click', () => openForm(null));
+  document.getElementById('closeForm').addEventListener('click', closeForm);
+  formOverlay.addEventListener('click', e => { if(e.target === formOverlay) closeForm(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeForm(); });
+
+  document.getElementById('matchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const id = document.getElementById('formId').value;
+    const sportId = document.getElementById('formSport').value;
+    const hasCategories = !!(sportMeta(sportId).categories && sportMeta(sportId).categories.length);
+    const data = {
+      sport: sportId,
+      category: hasCategories ? document.getElementById('formCategory').value : null,
+      venue: document.getElementById('formVenue').value,
+      groupA: document.getElementById('formGroupA').value.trim(),
+      groupB: document.getElementById('formGroupB').value.trim(),
+      date: document.getElementById('formDate').value,
+      tiktokLiveUrl: document.getElementById('formTiktok').value.trim(),
+    };
+    if(id) data.id = id; // only present when editing — see mock-data.js upsertMatch
+    MatchStore.upsertMatch(data);
+    closeForm();
+    showToast(id ? 'Perlawanan dikemas kini' : 'Perlawanan dicipta');
+  });
+
+  // showToast() now lives in mock-data.js (shared with admin-sport.html)
+
+  // ---------------- INIT ----------------
+  renderNav();
+  if(AUTH.isLoggedIn()) showApp(); else showLogin();
+})();
+</script>
+</body>
+</html>

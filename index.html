@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PESAWI 2026 — Pesta Sukan Antara Wilayah</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .hero{ padding:var(--sp-8) 0 var(--sp-7); text-align:center; }
+  .hero__logo{ width:auto; height:120px; margin:0 auto var(--sp-5); }
+  .hero__eyebrow{ margin-bottom:var(--sp-3); }
+  .hero__title{
+    font-family:var(--font-display); font-weight:700; letter-spacing:-0.01em;
+    font-size:clamp(2.2rem,6vw,3.4rem); color:var(--maroon-800); line-height:1.05;
+  }
+  .hero__sub{ font-size:1.05rem; color:var(--ink-600); margin-top:var(--sp-3); max-width:520px; margin-left:auto; margin-right:auto; }
+  .hero__dates{
+    display:inline-flex; align-items:center; gap:8px; margin-top:var(--sp-4);
+    background:var(--maroon-100); color:var(--maroon-800); font-weight:700;
+    padding:8px 18px; border-radius:999px; font-size:0.9rem;
+  }
+  .hero__actions{ display:flex; justify-content:center; gap:var(--sp-3); margin-top:var(--sp-6); flex-wrap:wrap; }
+
+  .live-strip{ padding:0 0 var(--sp-7); }
+  .live-strip__head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--sp-4); }
+  .live-strip__grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:var(--sp-4); }
+
+  .quick-links{ display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-5); padding:var(--sp-7) 0; }
+  .quick-card{
+    background:var(--cream-050); border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:var(--shadow-card); padding:var(--sp-6) var(--sp-5); text-align:left;
+    display:flex; flex-direction:column; gap:var(--sp-3); transition:transform .12s ease;
+  }
+  .quick-card:hover{ transform:translateY(-3px); }
+  .quick-card:active{ transform:translateY(0); }
+  .quick-card__icon{
+    width:48px; height:48px; border-radius:var(--r-md); background:var(--maroon-100);
+    display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+  }
+  .quick-card h3{ font-family:var(--font-display); font-weight:700; font-size:1.2rem; }
+  .quick-card p{ font-size:0.9rem; color:var(--ink-600); line-height:1.6; }
+  .quick-card__arrow{ margin-top:auto; font-size:0.85rem; font-weight:700; color:var(--maroon-700); }
+
+  .admin-footer-link{
+    display:block; text-align:center; padding:var(--sp-6) 0 var(--sp-7);
+    font-size:0.82rem; color:var(--ink-400);
+  }
+  .admin-footer-link a{ color:var(--ink-600); font-weight:600; text-decoration:underline; text-underline-offset:3px; }
+
+  @media (max-width:640px){
+    .quick-links{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Pesta Sukan Antara Wilayah</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="schedule.html">Jadual Perlawanan</a>
+      <a class="nav-link nav-link--gold" href="admin.html">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
+        Jurucatat Skor
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <img class="hero__logo" src="assets/pesawi-lockup.png" alt="Logo PESAWI — Pesta Sukan Antara Wilayah" />
+    <div class="hero__eyebrow eyebrow">Pesta Sukan Antara Wilayah · Ke-13</div>
+    <h1 class="hero__title">PESAWI 2026</h1>
+    <p class="hero__sub">Ikuti skor perlawanan secara langsung sepanjang PESAWI Ke-13 — dikemas kini terus oleh jurucatat skor di gelanggang.</p>
+    <div class="hero__dates">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+      3 – 6 Oktober 2026
+    </div>
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="schedule.html">Lihat Jadual Perlawanan</a>
+      <a class="btn btn--ghost" href="standings.html">Kedudukan Rumah</a>
+    </div>
+  </section>
+
+  <section class="live-strip" id="liveStrip" style="display:none;">
+    <div class="live-strip__head">
+      <h2 class="section-title">Sedang Berlangsung Sekarang</h2>
+      <a class="nav-link" href="schedule.html" style="border-color:var(--line-strong); color:var(--maroon-700);">Lihat Semua ↗</a>
+    </div>
+    <div class="live-strip__grid" id="liveStripGrid"></div>
+  </section>
+
+  <section class="quick-links">
+    <a class="quick-card" href="schedule.html">
+      <span class="quick-card__icon">📅</span>
+      <h3>Jadual Perlawanan</h3>
+      <p>Semua perlawanan sepanjang 4 hari PESAWI, boleh ditapis mengikut hari dan tempat pertandingan.</p>
+      <span class="quick-card__arrow">Lihat jadual →</span>
+    </a>
+    <a class="quick-card" href="admin.html">
+      <span class="quick-card__icon">🔐</span>
+      <h3>Log Masuk Jurucatat Skor</h3>
+      <p>Akses terhad untuk jurucatat skor sahaja — kemas kini skor dan status perlawanan secara langsung.</p>
+      <span class="quick-card__arrow">Log masuk →</span>
+    </a>
+  </section>
+
+</main>
+
+<footer class="wrap admin-footer-link">
+  Kawasan pentadbir? <a href="admin.html">Log masuk jurucatat skor di sini</a>.
+</footer>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  // matchCardHTML() now lives in mock-data.js as publicMatchCardHTML()
+  // (shared with sport.html)
+
+  MatchStore.subscribe(matches => {
+    const live = matches.filter(m => m.status === 'live').slice(0, 3);
+    const strip = document.getElementById('liveStrip');
+    const grid = document.getElementById('liveStripGrid');
+    if(live.length === 0){
+      strip.style.display = 'none';
+      return;
+    }
+    strip.style.display = 'block';
+    grid.innerHTML = live.map(publicMatchCardHTML).join('');
+  });
+})();
+</script>
+</body>
+</html>

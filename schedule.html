@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jadual Perlawanan — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Skor langsung · paparan awam</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="standings.html">Kedudukan</a>
+      <a class="nav-link nav-link--gold" href="admin.html">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
+        Log Masuk Jurucatat Skor
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="filter-bar">
+    <h1 class="page-title">Jadual Perlawanan</h1>
+    <div class="chip-row" id="sportTabs"></div>
+  </div>
+
+  <div id="matchArea"></div>
+</main>
+
+<div class="overlay" id="detailOverlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal__head">
+      <span class="eyebrow">Butiran Perlawanan</span>
+      <button class="modal__close" id="closeDetail" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal__body" id="detailBody"></div>
+  </div>
+</div>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  let activeSport = null; // decided once, from the first live-data load (see ensureActiveSportAndTabs)
+  let currentMatches = [];
+  let openMatchId = null;
+  let tabsBuilt = false;
+
+  // ---- sport tabs (blended across categories — Futsal/Bola Tampar show
+  // every category's matches together under one tab, per spec) ----
+  const sportTabs = document.getElementById('sportTabs');
+
+  function ensureActiveSportAndTabs(matches){
+    if(tabsBuilt) return; // default tab is chosen once, on first load — not re-picked on every live update
+    const liveMatch = matches.find(m => m.status === 'live');
+    activeSport = liveMatch ? liveMatch.sport : SPORTS[0].id;
+    sportTabs.innerHTML = SPORTS.map(s =>
+      `<button class="chip${s.id === activeSport ? ' is-active' : ''}" data-sport="${s.id}" type="button">${s.icon} ${s.label}</button>`
+    ).join('');
+    sportTabs.addEventListener('click', e => {
+      const btn = e.target.closest('.chip');
+      if(!btn) return;
+      activeSport = btn.dataset.sport;
+      sportTabs.querySelectorAll('.chip').forEach(c => c.classList.toggle('is-active', c === btn));
+      render();
+    });
+    tabsBuilt = true;
+  }
+
+  function statusRank(s){ return s === 'live' ? 0 : s === 'upcoming' ? 1 : 2; }
+
+  function applySportFilter(matches){
+    return matches
+      .filter(m => m.sport === activeSport)
+      .sort((a,b) => statusRank(a.status) - statusRank(b.status) || a.date.localeCompare(b.date));
+  }
+
+  function matchCardHTML(m){
+    const meta = sportMeta(m.sport);
+    const catLabel = meta.categories ? categoryLabel(m.sport, m.category) : '';
+    return `
+    <button class="card match-card-row" data-open="${m.id}" type="button" style="display:block; width:100%; padding:0; text-align:left;">
+      <div style="position:relative; text-align:center; padding:var(--sp-4) var(--sp-6) 0;">
+        <span class="sport-tag" style="justify-content:center;">
+          <span class="sport-icon">${meta.icon}</span>${meta.label}
+        </span>
+        ${catLabel ? `<div class="muted" style="font-size:0.78rem; margin-top:2px;">${catLabel}</div>` : ''}
+        <div style="position:absolute; top:var(--sp-4); right:var(--sp-4);">${statusBadgeHTML(m.status)}</div>
+      </div>
+      <div style="border-top:1px solid var(--line); margin:var(--sp-4) var(--sp-5) 0;"></div>
+      <div style="display:flex; align-items:center; justify-content:center; gap:var(--sp-4); padding:var(--sp-4) var(--sp-5);">
+        <span class="team-name" style="flex:1; text-align:right;">${escapeHtml(m.groupA)}</span>
+        <div class="score-display score-display--card">
+          <span>${m.scoreA}</span><span class="vs-sep">–</span><span>${m.scoreB}</span>
+        </div>
+        <span class="team-name" style="flex:1; text-align:left;">${escapeHtml(m.groupB)}</span>
+      </div>
+      <div style="border-top:1px solid var(--line); margin:0 var(--sp-5);"></div>
+      <div class="muted" style="text-align:center; padding:var(--sp-3) var(--sp-5) var(--sp-4);">${escapeHtml(m.venue)}</div>
+    </button>`;
+  }
+
+  function emptyStateHTML(){
+    return `<div class="empty-state">
+      <div class="empty-state__icon">🏟️</div>
+      <div class="empty-state__title">Tiada perlawanan untuk sukan ini</div>
+      <p class="muted">Cuba pilih sukan lain di atas.</p>
+    </div>`;
+  }
+
+  function loadingHTML(){
+    return `<div style="display:flex; flex-direction:column; gap:var(--sp-4); padding-bottom:var(--sp-7);">` + Array.from({length:3}).map(() => `
+      <div class="skeleton-card" style="height:140px;">
+        <div class="skeleton-line" style="width:30%;height:14px;margin:0 auto 16px;"></div>
+        <div class="skeleton-line" style="width:60%;height:28px;margin:0 auto 12px;"></div>
+        <div class="skeleton-line" style="width:40%;height:14px;margin:0 auto;"></div>
+      </div>`).join('') + `</div>`;
+  }
+
+  function render(){
+    const area = document.getElementById('matchArea');
+    const filtered = applySportFilter(currentMatches);
+    if(filtered.length === 0){
+      area.innerHTML = emptyStateHTML();
+      return;
+    }
+    area.innerHTML = `<div style="display:flex; flex-direction:column; gap:var(--sp-4); padding-bottom:var(--sp-7);">${filtered.map(matchCardHTML).join('')}</div>`;
+    area.querySelectorAll('[data-open]').forEach(card => {
+      card.addEventListener('click', () => openDetail(card.dataset.open));
+    });
+  }
+
+  // ---- match detail modal ----
+  const overlay = document.getElementById('detailOverlay');
+  const detailBody = document.getElementById('detailBody');
+
+  function setsSummaryLineHTML(m){
+    if(!isSetsSport(m.sport) || !m.sets.length) return '';
+    const parts = m.sets.map((s,i) => `Set ${i+1}: ${s.scoreA}–${s.scoreB}`).join(' · ');
+    return `<p style="margin-top:var(--sp-2); font-size:0.8rem; color:rgba(251,245,234,0.75);">${parts}</p>`;
+  }
+
+  function detailHTML(m){
+    const meta = sportMeta(m.sport);
+    const { short } = dayLabel(m.date);
+    const hasStream = !!m.tiktokLiveUrl;
+    return `
+    <div class="detail-scoreboard">
+      ${statusBadgeHTML(m.status)}
+      <div class="detail-teams" style="margin-top:var(--sp-4);">
+        <span class="detail-team-name">${escapeHtml(m.groupA)}</span>
+        <span class="detail-score">${m.scoreA}<span class="detail-sep">–</span>${m.scoreB}</span>
+        <span class="detail-team-name">${escapeHtml(m.groupB)}</span>
+      </div>
+      ${setsSummaryLineHTML(m)}
+      <div class="detail-meta-row">
+        <span class="detail-meta-item">${meta.icon}&nbsp;${sportDisplayLabel(m.sport, m.category)}</span>
+        <span class="detail-meta-item">📍 ${escapeHtml(m.venue)}</span>
+        <span class="detail-meta-item">📅 ${short}</span>
+      </div>
+      <div class="detail-actions">
+        ${hasStream
+          ? `<a class="btn btn--tiktok" href="${escapeHtml(safeUrl(m.tiktokLiveUrl))}" target="_blank" rel="noopener">${tiktokIconSVG()}Tonton Secara Langsung di TikTok</a>`
+          : `<button class="btn btn--tiktok is-disabled" type="button" disabled>${tiktokIconSVG()}Pautan siaran belum tersedia</button>`
+        }
+      </div>
+    </div>`;
+  }
+
+  function openDetail(id){
+    openMatchId = id;
+    const m = MatchStore.getById(id);
+    if(!m) return;
+    detailBody.innerHTML = detailHTML(m);
+    overlay.classList.add('is-open');
+    history.replaceState(null, '', '#match-' + id);
+  }
+  function closeDetail(){
+    openMatchId = null;
+    overlay.classList.remove('is-open');
+    history.replaceState(null, '', location.pathname);
+  }
+  document.getElementById('closeDetail').addEventListener('click', closeDetail);
+  overlay.addEventListener('click', e => { if(e.target === overlay) closeDetail(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDetail(); });
+
+  // ---- initial load: show skeletons briefly, then subscribe (mimics an
+  // initial Firestore fetch before onSnapshot starts pushing updates) ----
+  document.getElementById('matchArea').innerHTML = loadingHTML();
+  setTimeout(() => {
+    MatchStore.subscribe(matches => {
+      currentMatches = matches;
+      ensureActiveSportAndTabs(matches);
+      render();
+      if(openMatchId){
+        const m = MatchStore.getById(openMatchId);
+        if(m) detailBody.innerHTML = detailHTML(m);
+      }
+    });
+    const hashId = location.hash.replace('#match-', '');
+    if(hashId) openDetail(hashId);
+  }, 650);
+})();
+</script>
+</body>
+</html>
