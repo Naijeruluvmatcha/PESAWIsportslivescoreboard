@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sukan — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Skor langsung · paparan awam</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="standings.html">Kedudukan</a>
+      <a class="nav-link" href="sports-index.html">Kedudukan Sukan</a>
+      <a class="nav-link nav-link--gold" href="admin.html">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
+        Log Masuk Jurucatat Skor
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <a class="btn btn--ghost btn--sm" href="sports-index.html" style="margin-top:var(--sp-5);">← Kembali</a>
+
+  <div class="standings-lead">
+    <h1 class="page-title" id="sportHeading">Sukan</h1>
+    <p class="muted">Kedudukan · perlawanan langsung · carta pusingan liga untuk sukan ini</p>
+  </div>
+
+  <section>
+    <h2 class="section-title" style="padding-bottom:var(--sp-4);">Kedudukan</h2>
+    <div id="standingsArea"></div>
+  </section>
+
+  <section style="margin-top:var(--sp-7);">
+    <h2 class="section-title" style="padding-bottom:var(--sp-4);">Perlawanan Semasa</h2>
+    <div id="liveArea"></div>
+  </section>
+
+  <section style="margin-top:var(--sp-7); padding-bottom:var(--sp-7);">
+    <h2 class="section-title" style="padding-bottom:var(--sp-4);">Carta Pusingan Liga</h2>
+    <div id="gridArea"></div>
+  </section>
+</main>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  // ZONE_COLORS/zoneColor() now live in mock-data.js (shared with standings.html)
+
+  // ---------------- URL PARAMS ----------------
+  const params = new URLSearchParams(location.search);
+  const sportParam = params.get('sport');
+  const categoryParam = params.get('category'); // null/absent is valid — sports with no categories
+
+  const displayLabel = sportDisplayLabel(sportParam, categoryParam);
+  document.getElementById('sportHeading').textContent = displayLabel;
+  document.title = `${displayLabel} — PESAWI 2026`;
+
+  function filterToSportCategory(matches){
+    return matches
+      .filter(m => m.sport === sportParam)
+      .filter(m => !categoryParam || m.category === categoryParam);
+  }
+
+  // ---------------- SECTION 1: KEDUDUKAN (reuses shared computeEventStandings) ----------------
+  function leaderboardHTML(standings){
+    const rows = standings.map((h,i) => {
+      const rank = i+1;
+      return `
+      <tr class="standings-row${rank===1 ? ' is-leader' : ''}">
+        <td data-label="Kedudukan"><span class="rank-badge">#${rank}</span>${rank===1 ? ' 🏆' : ''}</td>
+        <td data-label="Pasukan"><span class="house-name"><span class="house-dot" style="background:${zoneColor(h.name)}"></span>${escapeHtml(h.name)}</span></td>
+        <td data-label="M">${h.wins}</td>
+        <td data-label="S">${h.draws}</td>
+        <td data-label="K">${h.losses}</td>
+        <td data-label="Mata" class="standings-points">${h.points}</td>
+      </tr>`;
+    }).join('');
+    return `
+    <div class="card standings-card">
+      <table class="standings-table">
+        <thead>
+          <tr><th>Kedudukan</th><th>Pasukan</th><th>M</th><th>S</th><th>K</th><th>Mata</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function standingsEmptyHTML(){
+    return `<div class="empty-state">
+      <div class="empty-state__icon">🏆</div>
+      <div class="empty-state__title">Belum ada keputusan direkodkan</div>
+      <p class="muted">Kedudukan akan dikemas kini sebaik sahaja perlawanan pertama tamat.</p>
+    </div>`;
+  }
+
+  // ---------------- SECTION 2: PERLAWANAN SEMASA (reuses shared publicMatchCardHTML) ----------------
+  function liveEmptyHTML(){
+    return `<div class="empty-state">
+      <div class="empty-state__icon">🔴</div>
+      <div class="empty-state__title">Tiada perlawanan langsung buat masa ini</div>
+      <p class="muted">Semak kembali sebentar lagi.</p>
+    </div>`;
+  }
+
+  // ---------------- SECTION 3: CARTA PUSINGAN LIGA ----------------
+  // Uses ZONES directly (all 5 real zones), not discovered from existing
+  // matches — a zone pair with zero finished matches still needs its own
+  // row/column showing "Belum" everywhere, rather than the whole grid
+  // disappearing (or that pair vanishing) just because no data exists yet.
+  function findMatch(matches, houseA, houseB){
+    return matches.find(m =>
+      (m.groupA === houseA && m.groupB === houseB) ||
+      (m.groupA === houseB && m.groupB === houseA)
+    );
+  }
+
+  // score shown from rowHouse's own perspective, regardless of which side
+  // (groupA/groupB) it happened to be recorded as in the match object
+  function cellFromPerspective(m, rowHouse){
+    return m.groupA === rowHouse
+      ? { my: m.scoreA, their: m.scoreB }
+      : { my: m.scoreB, their: m.scoreA };
+  }
+
+  function roundRobinGridHTML(matches, houses){
+    const headerCells = houses.map(h =>
+      `<th style="padding:var(--sp-3) var(--sp-4); font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-400); text-align:center; white-space:nowrap;">${escapeHtml(h)}</th>`
+    ).join('');
+
+    const bodyRows = houses.map(rowHouse => {
+      const cells = houses.map(colHouse => {
+        if(rowHouse === colHouse){
+          return `<td style="padding:var(--sp-4); text-align:center; color:var(--ink-400);">—</td>`;
+        }
+        const m = findMatch(matches, rowHouse, colHouse);
+        // played or live only — upcoming (or no fixture at all between this
+        // pair) both fall through to "Belum", same visual treatment
+        if(m && (m.status === 'finished' || m.status === 'live')){
+          const { my, their } = cellFromPerspective(m, rowHouse);
+          const isLive = m.status === 'live';
+          return `<td style="padding:var(--sp-4); text-align:center; font-family:var(--font-display); font-weight:${isLive ? 700 : 600}; color:${isLive ? 'var(--live)' : 'var(--ink-800)'};">${my}–${their}</td>`;
+        }
+        return `<td style="padding:var(--sp-4); text-align:center; color:var(--ink-400); font-size:0.82rem; background:var(--line);">Belum</td>`;
+      }).join('');
+      return `
+      <tr style="border-bottom:1px solid var(--line);">
+        <th style="padding:var(--sp-3) var(--sp-4); text-align:left; font-size:0.85rem; font-weight:700; white-space:nowrap; color:var(--ink-800);">${escapeHtml(rowHouse)}</th>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    return `
+    <div class="card" style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; min-width:${360 + houses.length * 90}px;">
+        <thead><tr><th style="padding:var(--sp-3) var(--sp-4);"></th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // Tie-aggregated sports only (Badminton/Pickleball/Ping Pong/Karom/Dart).
+  // Same row/column axis and card chrome as roundRobinGridHTML() above —
+  // only how each CELL's value is computed changes, from a raw match
+  // lookup to the Phase B/C tie math.
+  function tieCellHTML(sport, rowZone, colZone, matches, totalCategories){
+    const result = computeTieResult(sport, rowZone, colZone, matches);
+    // leader isn't needed to pick what this cell shows — categoriesPlayed
+    // alone decides "Belum" vs. live-red vs. decided below — but it's
+    // resolved anyway so this grid runs through the exact same
+    // tie-resolution path Kedudukan uses, not a second, parallel judgment
+    // of who's ahead.
+    resolveTieLeader(sport, rowZone, colZone, result, matches);
+    if(result.categoriesPlayed === 0){
+      return `<td style="padding:var(--sp-4); text-align:center; color:var(--ink-400); font-size:0.82rem; background:var(--line);">Belum</td>`;
+    }
+    const inProgress = result.categoriesPlayed < totalCategories;
+    return `<td style="padding:var(--sp-4); text-align:center; font-family:var(--font-display); font-weight:${inProgress ? 700 : 600}; color:${inProgress ? 'var(--live)' : 'var(--ink-800)'};">${result.categoriesA}–${result.categoriesB}</td>`;
+  }
+
+  function tieResultGridHTML(sport, matches, zones){
+    const totalCategories = (sportMeta(sport).categories || []).length;
+    const headerCells = zones.map(z =>
+      `<th style="padding:var(--sp-3) var(--sp-4); font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-400); text-align:center; white-space:nowrap;">${escapeHtml(z)}</th>`
+    ).join('');
+
+    const bodyRows = zones.map(rowZone => {
+      const cells = zones.map(colZone =>
+        rowZone === colZone
+          ? `<td style="padding:var(--sp-4); text-align:center; color:var(--ink-400);">—</td>`
+          : tieCellHTML(sport, rowZone, colZone, matches, totalCategories)
+      ).join('');
+      return `
+      <tr style="border-bottom:1px solid var(--line);">
+        <th style="padding:var(--sp-3) var(--sp-4); text-align:left; font-size:0.85rem; font-weight:700; white-space:nowrap; color:var(--ink-800);">${escapeHtml(rowZone)}</th>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    return `
+    <div class="card" style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; min-width:${360 + zones.length * 90}px;">
+        <thead><tr><th style="padding:var(--sp-3) var(--sp-4);"></th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // ---------------- LOADING SKELETONS ----------------
+  function skeletonBlockHTML(count, height){
+    return `<div style="display:flex; flex-direction:column; gap:var(--sp-3);">` +
+      Array.from({length:count}).map(() =>
+        `<div class="skeleton-card" style="height:${height}px; display:flex; align-items:center; padding:0 var(--sp-5);">
+          <div class="skeleton-line" style="width:40%;height:16px;"></div>
+        </div>`
+      ).join('') + `</div>`;
+  }
+
+  // ---------------- RENDER ----------------
+  function render(matches){
+    const scoped = filterToSportCategory(matches);
+
+    const standings = computeEventStandings(sportParam, categoryParam, matches);
+    document.getElementById('standingsArea').innerHTML =
+      standings.length === 0 ? standingsEmptyHTML() : leaderboardHTML(standings);
+
+    const live = scoped.filter(m => m.status === 'live');
+    document.getElementById('liveArea').innerHTML =
+      live.length === 0 ? liveEmptyHTML() : `<div class="match-grid">${live.map(publicMatchCardHTML).join('')}</div>`;
+
+    document.getElementById('gridArea').innerHTML = sportMeta(sportParam).isTieAggregated
+      ? tieResultGridHTML(sportParam, matches, ZONES)
+      : roundRobinGridHTML(scoped, ZONES);
+  }
+
+  // ---- show skeletons briefly, then subscribe (same simulated-fetch
+  // pattern as every other page in this app) ----
+  document.getElementById('standingsArea').innerHTML = skeletonBlockHTML(4, 52);
+  document.getElementById('liveArea').innerHTML = skeletonBlockHTML(1, 180);
+  document.getElementById('gridArea').innerHTML = skeletonBlockHTML(1, 220);
+  setTimeout(() => {
+    MatchStore.subscribe(matches => { render(matches); });
+  }, 650);
+})();
+</script>
+</body>
+</html>

@@ -50,7 +50,30 @@
     </div>
   </div>
 
-  <!-- DASHBOARD -->
+  <!-- HUB (default view after login) -->
+  <div id="adminHub" style="display:none;">
+    <div id="hubMainView">
+      <div class="standings-lead">
+        <h1 class="page-title">Pilih Sukan</h1>
+        <p class="muted">Pilih sukan untuk mula mengemas kini skor</p>
+      </div>
+      <div id="hubSportGrid" class="sport-breakdown-grid"></div>
+      <div style="margin-top:var(--sp-6); padding-bottom:var(--sp-7);">
+        <button class="btn btn--ghost btn--sm" id="viewAllMatchesBtn" type="button">Lihat Semua Perlawanan</button>
+      </div>
+    </div>
+
+    <div id="hubCategoryView" style="display:none;">
+      <button class="btn btn--ghost btn--sm" id="hubBackBtn" type="button" style="margin:var(--sp-5) 0;">← Kembali</button>
+      <div class="standings-lead" style="padding-top:0;">
+        <h1 class="page-title" id="hubCategoryHeading">Sukan</h1>
+        <p class="muted">Pilih kumpulan</p>
+      </div>
+      <div id="hubCategoryGrid" class="sport-breakdown-grid" style="padding-bottom:var(--sp-7);"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD (flat match list — reached via "Lihat Semua Perlawanan") -->
   <div id="adminDashboard" style="display:none;">
     <div class="admin-toolbar">
       <h1 class="page-title">Pengurusan Perlawanan</h1>
@@ -62,65 +85,7 @@
 
 </main>
 
-<!-- MATCH FORM -->
-<div class="overlay" id="formOverlay">
-  <div class="modal" role="dialog" aria-modal="true">
-    <div class="modal__head">
-      <span class="eyebrow" id="formTitle">Perlawanan Baharu</span>
-      <button class="modal__close" id="closeForm" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal__body">
-      <form id="matchForm">
-        <input type="hidden" id="formId" />
-        <div class="field-row">
-          <div class="field">
-            <label for="formSport">Sukan</label>
-            <div class="select-field">
-              <select class="input" id="formSport"></select>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-            </div>
-          </div>
-          <div class="field">
-            <label for="formVenue">Tempat</label>
-            <div class="select-field">
-              <select class="input" id="formVenue"></select>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-            </div>
-          </div>
-        </div>
-        <div class="field" id="formCategoryField" style="margin-top:16px; display:none;">
-          <label for="formCategory">Kategori</label>
-          <div class="select-field">
-            <select class="input" id="formCategory"></select>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-          </div>
-        </div>
-        <div class="field-row" style="margin-top:16px;">
-          <div class="field">
-            <label for="formGroupA">Kumpulan / Pasukan A</label>
-            <input class="input" id="formGroupA" maxlength="60" required />
-          </div>
-          <div class="field">
-            <label for="formGroupB">Kumpulan / Pasukan B</label>
-            <input class="input" id="formGroupB" maxlength="60" required />
-          </div>
-        </div>
-        <div class="field" style="margin-top:16px;">
-          <label for="formDate">Hari</label>
-          <div class="select-field">
-            <select class="input" id="formDate"></select>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-          </div>
-        </div>
-        <div class="field" style="margin-top:16px;">
-          <label for="formTiktok">URL Siaran Langsung TikTok <span class="field-hint">— pilihan, biarkan kosong jika belum bersiaran</span></label>
-          <input class="input" id="formTiktok" type="url" placeholder="https://www.tiktok.com/@..." />
-        </div>
-        <button class="btn btn--primary btn--block" type="submit" style="margin-top:20px;">Simpan Perlawanan</button>
-      </form>
-    </div>
-  </div>
-</div>
+<!-- MATCH FORM — markup inserted at init via matchFormModalHTML() (mock-data.js), shared with admin-sport.html -->
 
 <div class="toast-stack" id="toastStack"></div>
 
@@ -163,12 +128,84 @@
 
   function showLogin(){
     document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('adminHub').style.display = 'none';
     document.getElementById('adminDashboard').style.display = 'none';
   }
+  // Hub is now the default view straight after login — the flat match
+  // list (previously shown here) moved to showDashboard(), reached one
+  // click away via "Lihat Semua Perlawanan".
   function showApp(){
     document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('adminDashboard').style.display = 'none';
+    document.getElementById('adminHub').style.display = 'block';
+    showHubMainView();
+    buildHubOnce();
+  }
+  function showDashboard(){
+    document.getElementById('adminHub').style.display = 'none';
     document.getElementById('adminDashboard').style.display = 'block';
     initDashboardOnce();
+  }
+
+  // ---------------- HUB ----------------
+  function scoringFormatLabel(sport){
+    if(sport.scoringType === 'sets') return 'Format set';
+    if(sport.scoringType === 'countdown') return `Countdown ${sport.startValue}`;
+    return 'Mata terkumpul';
+  }
+
+  function hubSportCardHTML(s){
+    const subtitle = (s.categories && s.categories.length)
+      ? `${s.categories.length} kumpulan`
+      : scoringFormatLabel(s);
+    return `
+    <button class="card sport-breakdown-card" data-sport="${s.id}" type="button" style="align-items:center; text-align:center; gap:6px;">
+      <span style="font-size:2rem; line-height:1;">${s.icon}</span>
+      <span class="section-title">${s.label}</span>
+      <span class="muted">${subtitle}</span>
+    </button>`;
+  }
+
+  function showHubMainView(){
+    document.getElementById('hubCategoryView').style.display = 'none';
+    document.getElementById('hubMainView').style.display = 'block';
+  }
+
+  function showHubCategoryView(meta){
+    document.getElementById('hubCategoryHeading').textContent = meta.label;
+    const grid = document.getElementById('hubCategoryGrid');
+    grid.innerHTML = meta.categories.map(c => `
+      <button class="card sport-breakdown-card" data-category="${c.id}" type="button" style="align-items:center; text-align:center;">
+        <span class="section-title">${c.label}</span>
+      </button>`).join('');
+    // reassigned fresh each time this view is entered — safe against
+    // duplicate-listener buildup since a new category grid is rendered above
+    grid.onclick = e => {
+      const btn = e.target.closest('[data-category]');
+      if(!btn) return;
+      location.href = `admin-sport.html?sport=${meta.id}&category=${btn.dataset.category}`;
+    };
+    document.getElementById('hubMainView').style.display = 'none';
+    document.getElementById('hubCategoryView').style.display = 'block';
+  }
+
+  let hubBuilt = false;
+  function buildHubOnce(){
+    if(hubBuilt) return;
+    document.getElementById('hubSportGrid').innerHTML = SPORTS.map(hubSportCardHTML).join('');
+    document.getElementById('hubSportGrid').addEventListener('click', e => {
+      const btn = e.target.closest('[data-sport]');
+      if(!btn) return;
+      const meta = sportMeta(btn.dataset.sport);
+      if(meta.categories && meta.categories.length){
+        showHubCategoryView(meta);
+      } else {
+        location.href = `admin-sport.html?sport=${meta.id}`;
+      }
+    });
+    document.getElementById('hubBackBtn').addEventListener('click', showHubMainView);
+    document.getElementById('viewAllMatchesBtn').addEventListener('click', showDashboard);
+    hubBuilt = true;
   }
 
   // ---------------- DASHBOARD ----------------
@@ -230,81 +267,18 @@
     list.innerHTML = filtered.length === 0 ? adminEmptyStateHTML() : filtered.map(adminMatchHTML).join('');
   }
 
-  // event delegation for the match list — now shared with admin-sport.html.
-  // "Edit Butiran" opens this page's own form modal via openForm().
-  wireAdminMatchEvents(document.getElementById('adminList'), match => openForm(match));
-
   // ---------------- MATCH FORM ----------------
-  const formOverlay = document.getElementById('formOverlay');
-  document.getElementById('formSport').innerHTML = SPORTS.map(s => `<option value="${s.id}">${s.icon} ${s.label}</option>`).join('');
-  document.getElementById('formVenue').innerHTML = VENUES.map(v => `<option value="${v}">${v}</option>`).join('');
-  document.getElementById('formDate').innerHTML = EVENT_DAYS.map((iso,i) => {
-    const { short } = dayLabel(iso);
-    return `<option value="${iso}">Day ${i+1} — ${short}</option>`;
-  }).join('');
-
-  // category selector only exists for sports with a categories list — hidden
-  // and cleared entirely (no disabled empty dropdown left behind) otherwise
-  const formCategoryField = document.getElementById('formCategoryField');
-  const formCategorySelect = document.getElementById('formCategory');
-  function updateCategoryField(sportId, selectedCategoryId){
-    const categories = sportMeta(sportId).categories;
-    if(categories && categories.length){
-      formCategoryField.style.display = '';
-      formCategorySelect.innerHTML = categories.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
-      formCategorySelect.value = categories.some(c => c.id === selectedCategoryId) ? selectedCategoryId : categories[0].id;
-      formCategorySelect.required = true;
-    } else {
-      formCategoryField.style.display = 'none';
-      formCategorySelect.innerHTML = '';
-      formCategorySelect.required = false;
-    }
-  }
-  document.getElementById('formSport').addEventListener('change', () => {
-    updateCategoryField(document.getElementById('formSport').value, null);
-  });
-
-  function openForm(match){
-    const isEdit = !!match;
-    document.getElementById('formTitle').textContent = isEdit ? 'Edit Perlawanan' : 'Perlawanan Baharu';
-    document.getElementById('formId').value = isEdit ? match.id : '';
-    const sportId = isEdit ? match.sport : SPORTS[0].id;
-    document.getElementById('formSport').value = sportId;
-    document.getElementById('formVenue').value = isEdit ? match.venue : VENUES[0];
-    updateCategoryField(sportId, isEdit ? match.category : null);
-    document.getElementById('formGroupA').value = isEdit ? match.groupA : '';
-    document.getElementById('formGroupB').value = isEdit ? match.groupB : '';
-    document.getElementById('formDate').value = isEdit ? match.date : EVENT_DAYS[0];
-    document.getElementById('formTiktok').value = isEdit ? (match.tiktokLiveUrl || '') : '';
-    formOverlay.classList.add('is-open');
-    document.getElementById('formGroupA').focus();
-  }
-  function closeForm(){ formOverlay.classList.remove('is-open'); }
-
+  // matchFormModalHTML()/wireMatchForm() now live in mock-data.js (shared
+  // with admin-sport.html) — this page just inserts the markup once and
+  // wires its own "+ Perlawanan Baharu" button to the returned openForm().
+  document.body.insertAdjacentHTML('beforeend', matchFormModalHTML());
+  const { openForm } = wireMatchForm();
   document.getElementById('newMatchBtn').addEventListener('click', () => openForm(null));
-  document.getElementById('closeForm').addEventListener('click', closeForm);
-  formOverlay.addEventListener('click', e => { if(e.target === formOverlay) closeForm(); });
-  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeForm(); });
 
-  document.getElementById('matchForm').addEventListener('submit', e => {
-    e.preventDefault();
-    const id = document.getElementById('formId').value;
-    const sportId = document.getElementById('formSport').value;
-    const hasCategories = !!(sportMeta(sportId).categories && sportMeta(sportId).categories.length);
-    const data = {
-      sport: sportId,
-      category: hasCategories ? document.getElementById('formCategory').value : null,
-      venue: document.getElementById('formVenue').value,
-      groupA: document.getElementById('formGroupA').value.trim(),
-      groupB: document.getElementById('formGroupB').value.trim(),
-      date: document.getElementById('formDate').value,
-      tiktokLiveUrl: document.getElementById('formTiktok').value.trim(),
-    };
-    if(id) data.id = id; // only present when editing — see mock-data.js upsertMatch
-    MatchStore.upsertMatch(data);
-    closeForm();
-    showToast(id ? 'Perlawanan dikemas kini' : 'Perlawanan dicipta');
-  });
+  // event delegation for the match list — now shared with admin-sport.html.
+  // "Edit Butiran" and "Padam" both handled by wireAdminMatchEvents itself
+  // (delete included); "Edit Butiran" opens the shared form modal via onEdit.
+  wireAdminMatchEvents(document.getElementById('adminList'), match => openForm(match));
 
   // showToast() now lives in mock-data.js (shared with admin-sport.html)
 

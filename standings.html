@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Kedudukan Rumah — PESAWI 2026</title>
+<title>Kedudukan Zon — PESAWI 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22,6 +22,7 @@
     </a>
     <div class="nav-actions">
       <a class="nav-link" href="schedule.html">Jadual Perlawanan</a>
+      <a class="nav-link" href="sports-index.html">Kedudukan Sukan</a>
       <a class="nav-link nav-link--gold" href="admin.html">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
         Jurucatat Skor
@@ -32,7 +33,7 @@
 
 <main class="wrap">
   <div class="standings-lead">
-    <h1 class="page-title">Kedudukan Rumah</h1>
+    <h1 class="page-title">Kedudukan Zon</h1>
     <p class="muted">Merentasi semua sukan · dikemas kini secara langsung</p>
   </div>
 
@@ -47,71 +48,85 @@
 <script src="mock-data.js"></script>
 <script>
 (function(){
-  const HOUSE_COLORS = {
-    'Rumah Merah': 'var(--house-merah)',
-    'Rumah Biru': 'var(--house-biru)',
-    'Rumah Kuning': 'var(--house-kuning)',
-    'Rumah Hijau': 'var(--house-hijau)',
-  };
-  function houseColor(name){ return HOUSE_COLORS[name] || 'var(--ink-400)'; }
+  // ZONES, ZONE_COLORS/zoneColor(), getAllEvents(), computeEventStandings(),
+  // and assignMedals() now all live in mock-data.js (shared with sport.html
+  // and, for the tie-aggregation math underneath, admin.html/admin-sport.html)
 
-  // sportCatKey() and computeStandings() now live in mock-data.js (shared
-  // with sport.html)
-
-  // every sport+category combo that could ever appear, in SPORTS order —
-  // filtered down to ones with actual finished matches at render time
-  function sportCategoryCombos(){
-    const combos = [];
-    SPORTS.forEach(s => {
-      if(s.categories && s.categories.length){
-        s.categories.forEach(c => combos.push({ sportId: s.id, categoryId: c.id }));
-      } else {
-        combos.push({ sportId: s.id, categoryId: null });
-      }
-    });
-    return combos;
+  // Every one of the 15 real events' own standings, computed once per
+  // render and reused by both the medal tally and the breakdown cards
+  // below — computeEventStandings() already routes tie-aggregated sports
+  // (Badminton/Pickleball/Ping Pong/Karom/Dart) through the virtual-match
+  // path and everything else through a plain filtered computeStandings(),
+  // so this is correct for all 15 without special-casing here.
+  function computeAllEventStandings(matches){
+    return getAllEvents().map(event => ({
+      event,
+      standings: computeEventStandings(event.sportId, event.category, matches),
+    }));
   }
 
-  function leaderboardHTML(standings){
-    const rows = standings.map((h,i) => {
+  // Overall medal count per zone, built from assignMedals() run on each
+  // event's own standings — every zone in ZONES is always included (even
+  // at 0-0-0), so a zone that hasn't medalled yet still gets a real row
+  // rather than disappearing from the table.
+  function medalTally(allEventStandings){
+    const tally = {};
+    ZONES.forEach(z => { tally[z] = { name:z, gold:0, silver:0, bronze:0 }; });
+    allEventStandings.forEach(({ standings }) => {
+      const medals = assignMedals(standings);
+      ['gold','silver','bronze'].forEach(key => {
+        const zone = medals[key];
+        if(zone && tally[zone]) tally[zone][key]++;
+      });
+    });
+    // Emas -> Perak -> Gangsa -> name, standard medal-table convention —
+    // NOT sorted by Jumlah first. A zone with more golds outranks one
+    // with a bigger total but fewer golds (see the summary for a real
+    // seed-data example where this actually changes the row order).
+    return Object.values(tally)
+      .map(t => ({ ...t, total: t.gold + t.silver + t.bronze }))
+      .sort((x,y) => y.gold - x.gold || y.silver - x.silver || y.bronze - x.bronze || x.name.localeCompare(y.name));
+  }
+
+  function medalTableHTML(tally){
+    const rows = tally.map((t,i) => {
       const rank = i+1;
       return `
       <tr class="standings-row${rank===1 ? ' is-leader' : ''}">
         <td data-label="Kedudukan"><span class="rank-badge">#${rank}</span>${rank===1 ? ' 🏆' : ''}</td>
-        <td data-label="Rumah"><span class="house-name"><span class="house-dot" style="background:${houseColor(h.name)}"></span>${escapeHtml(h.name)}</span></td>
-        <td data-label="M">${h.wins}</td>
-        <td data-label="S">${h.draws}</td>
-        <td data-label="K">${h.losses}</td>
-        <td data-label="Mata" class="standings-points">${h.points}</td>
+        <td data-label="Pasukan"><span class="house-name"><span class="house-dot" style="background:${zoneColor(t.name)}"></span>${escapeHtml(t.name)}</span></td>
+        <td data-label="Emas">${t.gold}</td>
+        <td data-label="Perak">${t.silver}</td>
+        <td data-label="Gangsa">${t.bronze}</td>
+        <td data-label="Jumlah" class="standings-points">${t.total}</td>
       </tr>`;
     }).join('');
     return `
     <div class="card standings-card">
       <table class="standings-table">
         <thead>
-          <tr><th>Kedudukan</th><th>Rumah</th><th>M</th><th>S</th><th>K</th><th>Mata</th></tr>
+          <tr><th>Kedudukan</th><th>Pasukan</th><th>Emas</th><th>Perak</th><th>Gangsa</th><th>Jumlah</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
   }
 
-  function breakdownCardHTML(combo, standings){
-    const meta = sportMeta(combo.sportId);
-    const key = sportCatKey(combo.sportId, combo.categoryId);
-    const rows = standings.map(h => {
-      const ps = h.perSport[key] || { w:0, d:0, l:0 };
-      return `
+  // standings here are already scoped to this one event (computeEventStandings()
+  // filtered to it before calling computeStandings()), so h.wins/draws/losses
+  // ARE this event's own tally directly — no perSport lookup needed.
+  function breakdownCardHTML(event, standings){
+    const meta = sportMeta(event.sportId);
+    const rows = standings.map(h => `
       <li class="sport-breakdown-row">
-        <span class="house-name"><span class="house-dot" style="background:${houseColor(h.name)}"></span>${escapeHtml(h.name)}</span>
-        <span class="wdl">${ps.w}-${ps.d}-${ps.l}</span>
-      </li>`;
-    }).join('');
+        <span class="house-name"><span class="house-dot" style="background:${zoneColor(h.name)}"></span>${escapeHtml(h.name)}</span>
+        <span class="wdl">${h.wins}-${h.draws}-${h.losses}</span>
+      </li>`).join('');
     return `
     <div class="card sport-breakdown-card">
       <div class="sport-breakdown-card__head">
         <span class="sport-icon">${meta.icon}</span>
-        <span class="section-title">${sportDisplayLabel(combo.sportId, combo.categoryId)}</span>
+        <span class="section-title">${sportDisplayLabel(event.sportId, event.category)}</span>
       </div>
       <ul class="sport-breakdown-list">${rows}</ul>
     </div>`;
@@ -133,27 +148,31 @@
   }
 
   function render(matches){
-    const standings = computeStandings(matches);
     const leaderboardArea = document.getElementById('leaderboardArea');
     const breakdownSection = document.getElementById('breakdownSection');
     const breakdownGrid = document.getElementById('breakdownGrid');
 
-    if(standings.length === 0){
+    const allEventStandings = computeAllEventStandings(matches);
+    const tally = medalTally(allEventStandings);
+
+    // "no results anywhere" now means every zone's medal total is 0, not
+    // "computeStandings() on the raw match list is empty" — the two used
+    // to be equivalent when this page only had the old W/D/L leaderboard,
+    // but they're not the same question anymore.
+    if(tally.every(t => t.total === 0)){
       leaderboardArea.innerHTML = emptyStateHTML();
       breakdownSection.style.display = 'none';
       return;
     }
 
-    leaderboardArea.innerHTML = leaderboardHTML(standings);
+    leaderboardArea.innerHTML = medalTableHTML(tally);
 
-    const combosWithResults = sportCategoryCombos().filter(({sportId, categoryId}) =>
-      matches.some(m => m.status === 'finished' && m.sport === sportId && m.category === categoryId)
-    );
-    if(combosWithResults.length === 0){
+    const eventsWithResults = allEventStandings.filter(({ standings }) => standings.length > 0);
+    if(eventsWithResults.length === 0){
       breakdownSection.style.display = 'none';
     } else {
       breakdownSection.style.display = 'block';
-      breakdownGrid.innerHTML = combosWithResults.map(c => breakdownCardHTML(c, standings)).join('');
+      breakdownGrid.innerHTML = eventsWithResults.map(({ event, standings }) => breakdownCardHTML(event, standings)).join('');
     }
   }
 

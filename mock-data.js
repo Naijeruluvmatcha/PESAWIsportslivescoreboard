@@ -23,22 +23,54 @@
                                      real push updates across clients
    ================================================================ */
 
-const STORAGE_KEY = 'sportsday_matches_v1';
-const DEMO_AUTOPLAY = true; // flip off once a real backend drives updates
+// bump this version suffix whenever seedMatches()'s shape or content changes,
+// or old cached localStorage data will silently keep showing instead of it.
+// v3: clear all mock data for real production use — seedMatches() now
+// returns [] instead of the demo match list, so this bump abandons any
+// v2 (or earlier) cached data still sitting in a browser's localStorage.
+const STORAGE_KEY = 'sportsday_matches_v3';
+
+// racquet/cue/throw sports that share the 5-category MS/WS/MD/WD/XD split
+const RACQUET_CATEGORIES = [
+  { id:'MS', label:'Perseorangan Lelaki' },
+  { id:'WS', label:'Perseorangan Wanita' },
+  { id:'MD', label:'Beregu Lelaki' },
+  { id:'WD', label:'Beregu Wanita' },
+  { id:'XD', label:'Beregu Campuran' },
+];
 
 const SPORTS = [
-  { id:'badminton', label:'Badminton', icon:'🏸', scoringType:'sets', categories:null },
-  { id:'sepak_takraw', label:'Sepak Takraw', icon:'🟠', scoringType:'sets', categories:null },
-  { id:'pickleball', label:'Pickleball', icon:'🎾', scoringType:'sets', categories:null },
-  { id:'ping_pong', label:'Ping Pong', icon:'🏓', scoringType:'sets', categories:null },
-  { id:'bola_tampar', label:'Bola Tampar', icon:'🏐', scoringType:'sets',
+  { id:'badminton', label:'Badminton', icon:'🏸', scoringType:'sets', isTieAggregated:true, categories:RACQUET_CATEGORIES },
+  { id:'sepak_takraw', label:'Sepak Takraw', icon:'🟠', scoringType:'sets', maxSetScore:17, isTieAggregated:false,
+    categories:[{id:'MT',label:'Pasukan Lelaki'},{id:'WT',label:'Pasukan Wanita'}] },
+  { id:'pickleball', label:'Pickleball', icon:'🎾', scoringType:'sets', isTieAggregated:true, categories:RACQUET_CATEGORIES },
+  { id:'ping_pong', label:'Ping Pong', icon:'🏓', scoringType:'sets', isTieAggregated:true, categories:RACQUET_CATEGORIES },
+  { id:'bola_tampar', label:'Bola Tampar', icon:'🏐', scoringType:'sets', isTieAggregated:false,
     categories:[{id:'lelaki',label:'Lelaki'},{id:'wanita',label:'Wanita'}] },
-  { id:'futsal', label:'Futsal', icon:'⚽', scoringType:'simple',
+  { id:'futsal', label:'Futsal', icon:'⚽', scoringType:'simple', scoreIncrements:[1], isTieAggregated:false,
     categories:[{id:'lelaki',label:'Lelaki'},{id:'wanita',label:'Wanita'},{id:'veteran',label:'Veteran'}] },
-  { id:'petanque', label:'Petanque', icon:'🥎', scoringType:'simple', categories:null },
-  { id:'karom', label:'Karom', icon:'🎱', scoringType:'simple', categories:null },
-  { id:'dart', label:'Dart', icon:'🎯', scoringType:'countdown', startValue:501, categories:null },
+  { id:'petanque', label:'Petanque', icon:'🥎', scoringType:'simple', scoreIncrements:[1,5], isTieAggregated:false,
+    categories:[{id:'MS',label:'Perseorangan Lelaki'},{id:'WS',label:'Perseorangan Wanita'},{id:'MX',label:'Tiga Beregu Campuran'}] },
+  { id:'karom', label:'Karom', icon:'🎱', scoringType:'simple', scoreIncrements:[1,5], isTieAggregated:true, categories:RACQUET_CATEGORIES },
+  { id:'dart', label:'Dart', icon:'🎯', scoringType:'countdown', startValue:501, isTieAggregated:true, categories:RACQUET_CATEGORIES },
 ];
+// isTieAggregated: Phase B will use this to know which sports combine their
+// categories into a single tie result between two zones, instead of scoring
+// each category as an independent standalone match. Not consumed anywhere
+// yet in this pass — just establishing the field so Phase B doesn't need
+// another SPORTS-array edit.
+// scoreIncrements (simple-scoring sports only) drives which quick-add
+// buttons the admin score panel shows. Futsal is [1] only — a goal is
+// always worth exactly 1, so a ±5 button there would be a data-entry
+// hazard, not a convenience. Petanque/Karom get [1,5] as a flexible
+// data-entry speed option, not because ±5 is a confirmed real scoring
+// unit for those sports.
+// maxSetScore (sets-scoring sports only) is an optional per-sport ceiling
+// on a single set's score, enforced in setSetScore()/adjustSetScore()
+// below. Sepak Takraw's 17-point set is a confirmed, stable rule, so it's
+// capped. Badminton deliberately has none: the sport is currently
+// mid-transition between two competing official point formats, and
+// capping either wrong number would block a real, valid score.
 // categories:null means the sport has one division, no selector needed.
 // Icon honesty note: sepak_takraw, pickleball, petanque, karom have no
 // exact Unicode emoji — these are reasonable stand-ins, swap freely.
@@ -57,6 +89,10 @@ function sportDisplayLabel(sportId, categoryId){
   const cat = categoryLabel(sportId, categoryId);
   return cat ? `${label} (${cat})` : label;
 }
+
+// the 5 real PESAWI zones (Sabah districts) — single source of truth for
+// every groupA/groupB value; replaces the old 4 placeholder house names.
+const ZONES = ['KK', 'Tawau', 'Sandakan', 'Lahad Datu', 'Keningau'];
 
 const VENUES = [
   'Dewan Badminton, KSTA', 'Gelanggang 1, KSTA', 'Gelanggang 2, KSTA',
@@ -81,51 +117,22 @@ function recomputeSetsSummary(m){
   m.scoreB = m.sets.filter(s => s.scoreB > s.scoreA).length;
 }
 
+// Shared by setSetScore() and adjustSetScore() so the ceiling logic exists
+// in exactly one place. Ceiling only applies where a maxSetScore is
+// confirmed for that sport (currently just Sepak Takraw's 17) — everything
+// else only floors at 0, same as every other score-writing method here.
+function clampSetScore(sportId, value){
+  const maxSetScore = sportMeta(sportId).maxSetScore;
+  const floored = Math.max(0, value);
+  return maxSetScore != null ? Math.min(floored, maxSetScore) : floored;
+}
+
+// Emptied for real production use — this used to return ~30 demo matches
+// across every sport/category (badminton, futsal, etc.) for development
+// and screenshots. The function itself stays so loadMatches()/localStorage
+// initialization keeps working unchanged; it just seeds nothing now.
 function seedMatches(){
-  const now = Date.now();
-  const matches = [
-    // ---- Badminton (sets, no category) — finished w/ complete set record + live w/ sets in progress
-    { id:'m1', sport:'badminton', category:null, venue:'Dewan Badminton, KSTA', date:'2026-10-03', groupA:'Rumah Merah', groupB:'Rumah Biru', scoreA:0, scoreB:0, sets:[{scoreA:21,scoreB:18},{scoreA:19,scoreB:21},{scoreA:21,scoreB:15}], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m2', sport:'badminton', category:null, venue:'Dewan Badminton, KSTA', date:'2026-10-04', groupA:'Rumah Kuning', groupB:'Rumah Hijau', scoreA:0, scoreB:0, sets:[{scoreA:21,scoreB:15},{scoreA:14,scoreB:17}], status:'live', tiktokLiveUrl:'https://www.tiktok.com/@sportsday.live/live', updatedAt:now },
-
-    // ---- Sepak Takraw (sets, no category)
-    { id:'m3', sport:'sepak_takraw', category:null, venue:'Gelanggang 1, KSTA', date:'2026-10-03', groupA:'Rumah Merah', groupB:'Rumah Kuning', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m4', sport:'sepak_takraw', category:null, venue:'Gelanggang 2, KSTA', date:'2026-10-05', groupA:'Rumah Biru', groupB:'Rumah Hijau', scoreA:0, scoreB:0, sets:[{scoreA:21,scoreB:10},{scoreA:21,scoreB:14}], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Pickleball (sets, no category)
-    { id:'m5', sport:'pickleball', category:null, venue:'Gelanggang Pickleball 1, KSTA', date:'2026-10-04', groupA:'Rumah Merah', groupB:'Rumah Hijau', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m6', sport:'pickleball', category:null, venue:'Gelanggang Pickleball 2, KSTA', date:'2026-10-06', groupA:'Rumah Kuning', groupB:'Rumah Biru', scoreA:0, scoreB:0, sets:[{scoreA:11,scoreB:9},{scoreA:9,scoreB:11},{scoreA:11,scoreB:7}], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Ping Pong (sets, no category)
-    { id:'m7', sport:'ping_pong', category:null, venue:'Gelanggang 3, KSTA', date:'2026-10-03', groupA:'Rumah Hijau', groupB:'Rumah Merah', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m8', sport:'ping_pong', category:null, venue:'Gelanggang 4, KSTA', date:'2026-10-05', groupA:'Rumah Biru', groupB:'Rumah Kuning', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Petanque (simple, no category)
-    { id:'m9', sport:'petanque', category:null, venue:'Gelanggang Petanque, KSTA', date:'2026-10-04', groupA:'Rumah Merah', groupB:'Rumah Biru', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m10', sport:'petanque', category:null, venue:'Gelanggang Petanque, KSTA', date:'2026-10-06', groupA:'Rumah Kuning', groupB:'Rumah Hijau', scoreA:13, scoreB:9, sets:[], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Karom (simple, no category)
-    { id:'m11', sport:'karom', category:null, venue:'Gelanggang 5, KSTA', date:'2026-10-03', groupA:'Rumah Biru', groupB:'Rumah Merah', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m12', sport:'karom', category:null, venue:'Gelanggang 5, KSTA', date:'2026-10-05', groupA:'Rumah Hijau', groupB:'Rumah Kuning', scoreA:4, scoreB:3, sets:[], status:'live', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Dart (countdown from 501, no category)
-    { id:'m13', sport:'dart', category:null, venue:'Bilik Dart, KSTA', date:'2026-10-04', groupA:'Rumah Kuning', groupB:'Rumah Biru', scoreA:0, scoreB:0, sets:[], status:'upcoming', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m14', sport:'dart', category:null, venue:'Bilik Dart, KSTA', date:'2026-10-06', groupA:'Rumah Merah', groupB:'Rumah Hijau', scoreA:501, scoreB:410, sets:[], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-
-    // ---- Bola Tampar (sets, categories: lelaki/wanita) — one finished, one live w/ sets in progress
-    { id:'m15', sport:'bola_tampar', category:'lelaki', venue:'Gelanggang Bola Tampar 5, KSTA', date:'2026-10-03', groupA:'Rumah Merah', groupB:'Rumah Kuning', scoreA:0, scoreB:0, sets:[{scoreA:25,scoreB:20},{scoreA:25,scoreB:18}], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m16', sport:'bola_tampar', category:'wanita', venue:'Gelanggang Bola Tampar 6, KSTA', date:'2026-10-05', groupA:'Rumah Biru', groupB:'Rumah Hijau', scoreA:0, scoreB:0, sets:[{scoreA:25,scoreB:22},{scoreA:18,scoreB:25}], status:'live', tiktokLiveUrl:'https://www.tiktok.com/@sportsday.live/live', updatedAt:now },
-
-    // ---- Futsal (simple, categories: lelaki/wanita/veteran) — all 3 categories finished,
-    // Lelaki kept as the required draw case
-    { id:'m17', sport:'futsal', category:'lelaki', venue:'Gelanggang Futsal 1, KSTA', date:'2026-10-04', groupA:'Rumah Kuning', groupB:'Rumah Merah', scoreA:3, scoreB:3, sets:[], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m18', sport:'futsal', category:'wanita', venue:'Gelanggang Futsal 3, KSTA', date:'2026-10-06', groupA:'Rumah Biru', groupB:'Rumah Hijau', scoreA:2, scoreB:1, sets:[], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-    { id:'m19', sport:'futsal', category:'veteran', venue:'Arena Futsal 1, KSTA', date:'2026-10-03', groupA:'Rumah Hijau', groupB:'Rumah Biru', scoreA:4, scoreB:2, sets:[], status:'finished', tiktokLiveUrl:'', updatedAt:now },
-  ];
-  // derive scoreA/scoreB from the sets array for every sets-scoring match,
-  // instead of hand-computing them above where a typo could desync the two
-  matches.forEach(m => { if(isSetsSport(m.sport)) recomputeSetsSummary(m); });
-  return matches;
+  return [];
 }
 
 function loadMatches(){
@@ -225,7 +232,22 @@ const MatchStore = (() => {
       const m = matches.find(x => x.id === id);
       if(!m || !m.sets[setIndex]) return;
       const key = team === 'home' ? 'scoreA' : 'scoreB';
-      m.sets[setIndex][key] = Math.max(0, parseInt(value, 10) || 0);
+      m.sets[setIndex][key] = clampSetScore(m.sport, parseInt(value, 10) || 0);
+      recomputeSetsSummary(m);
+      m.updatedAt = Date.now();
+      persist();
+    },
+
+    // Delta-based, same read-modify-write-in-one-call pattern as
+    // updateScore()/addThrow() above (not "read current, compute client-side,
+    // call setSetScore with the result") — that keeps two scorekeepers
+    // tapping +1 on the same set at once from clobbering each other, same
+    // reason updateScore() itself is delta-based instead of read-then-write.
+    adjustSetScore(id, setIndex, team, delta){
+      const m = matches.find(x => x.id === id);
+      if(!m || !m.sets[setIndex]) return;
+      const key = team === 'home' ? 'scoreA' : 'scoreB';
+      m.sets[setIndex][key] = clampSetScore(m.sport, m.sets[setIndex][key] + delta);
       recomputeSetsSummary(m);
       m.updatedAt = Date.now();
       persist();
@@ -259,28 +281,19 @@ const MatchStore = (() => {
       return newMatch;
     },
 
+    // Real delete, not a soft-delete flag — a single match record, and the
+    // git checkpoint already covers catastrophic recovery if ever needed.
+    deleteMatch(id){
+      const idx = matches.findIndex(x => x.id === id);
+      if(idx === -1) return false;
+      matches.splice(idx, 1);
+      persist();
+      return true;
+    },
+
     all(){ return matches.slice(); },
   };
 })();
-
-// ---- lightweight demo simulator so the public page shows real motion
-// even with nobody in the Admin tab. Uses the same store methods a real
-// scorekeeper action would use, so it's indistinguishable to listeners. ----
-if(DEMO_AUTOPLAY){
-  setInterval(() => {
-    // sets-scoring matches are excluded: their scoreA/scoreB are derived from
-    // the sets array (see recomputeSetsSummary) — ticking them directly here
-    // would desync the two and show impossible "set" counts.
-    // countdown-scoring matches are excluded too: updateScore() has no bust
-    // check, so blind increments here could push a dart score past 501.
-    const liveMatches = MatchStore.all().filter(m => m.status === 'live' && !isSetsSport(m.sport) && !isCountdownSport(m.sport));
-    if(liveMatches.length === 0) return;
-    const target = liveMatches[Math.floor(Math.random() * liveMatches.length)];
-    const team = Math.random() > 0.5 ? 'home' : 'away';
-    const points = Math.random() > 0.7 ? 2 : 1;
-    MatchStore.updateScore(target.id, team, points);
-  }, 9000);
-}
 
 /* ================================================================
    AUTH — mock scorekeeper login
@@ -363,51 +376,101 @@ function safeUrl(url){
    instead of duplicating this logic.
    ================================================================ */
 function simpleScorePanelHTML(m){
+  // sport-specific quick-add magnitudes — see the scoreIncrements comment
+  // on the SPORTS array for why Futsal only gets ±1
+  const increments = sportMeta(m.sport).scoreIncrements || [1];
+  const descending = [...increments].sort((a, b) => b - a); // decrement row: largest magnitude first (−5 −1)
+  const ascending = [...increments].sort((a, b) => a - b);  // increment row: smallest first (+1 +5)
+
+  function teamBlock(team, groupName, score){
+    const decButtons = descending.map(n => `
+        <button class="icon-btn icon-btn--minus" data-score-delta="${-n}" data-team="${team}" aria-label="Decrease ${escapeHtml(groupName)} score${n === 1 ? '' : ` by ${n}`}">${n === 1 ? '&minus;' : `−${n}`}</button>`).join('');
+    const incButtons = ascending.map(n => `
+        <button class="icon-btn icon-btn--plus" data-score-delta="${n}" data-team="${team}" aria-label="Increase ${escapeHtml(groupName)} score${n === 1 ? '' : ` by ${n}`}">${n === 1 ? '+' : `+${n}`}</button>`).join('');
+    // left border in the zone's own color — same zoneColor() used on
+    // standings.html/sport.html, not a separate copy of that lookup
+    return `
+    <div class="score-control" style="border-left:3px solid ${zoneColor(groupName)}; padding-left:var(--sp-3);">
+      <span class="score-control__team">${escapeHtml(groupName)}</span>
+      <div class="score-control__row">
+        ${decButtons}
+        <span class="score-control__value">${score}</span>
+        ${incButtons}
+      </div>
+      <div class="score-set">
+        <input type="number" min="0" data-set-input data-team="${team}" value="${score}" aria-label="Set ${escapeHtml(groupName)} score" />
+        <button class="btn btn--ghost btn--sm" data-set-action data-team="${team}" type="button">Tetapkan</button>
+      </div>
+    </div>`;
+  }
+
   return `
   <div class="score-panel">
-    <div class="score-control">
-      <span class="score-control__team">${escapeHtml(m.groupA)}</span>
-      <div class="score-control__row">
-        <button class="icon-btn icon-btn--minus" data-score-action="dec" data-team="home" aria-label="Decrease ${escapeHtml(m.groupA)} score">&minus;</button>
-        <span class="score-control__value">${m.scoreA}</span>
-        <button class="icon-btn icon-btn--plus" data-score-action="inc" data-team="home" aria-label="Increase ${escapeHtml(m.groupA)} score">+</button>
-      </div>
-      <div class="score-set">
-        <input type="number" min="0" data-set-input data-team="home" value="${m.scoreA}" aria-label="Set ${escapeHtml(m.groupA)} score" />
-        <button class="btn btn--ghost btn--sm" data-set-action data-team="home" type="button">Tetapkan</button>
-      </div>
-    </div>
-    <div class="score-control">
-      <span class="score-control__team">${escapeHtml(m.groupB)}</span>
-      <div class="score-control__row">
-        <button class="icon-btn icon-btn--minus" data-score-action="dec" data-team="away" aria-label="Decrease ${escapeHtml(m.groupB)} score">&minus;</button>
-        <span class="score-control__value">${m.scoreB}</span>
-        <button class="icon-btn icon-btn--plus" data-score-action="inc" data-team="away" aria-label="Increase ${escapeHtml(m.groupB)} score">+</button>
-      </div>
-      <div class="score-set">
-        <input type="number" min="0" data-set-input data-team="away" value="${m.scoreB}" aria-label="Set ${escapeHtml(m.groupB)} score" />
-        <button class="btn btn--ghost btn--sm" data-set-action data-team="away" type="button">Tetapkan</button>
-      </div>
-    </div>
+    ${teamBlock('home', m.groupA, m.scoreA)}
+    ${teamBlock('away', m.groupB, m.scoreB)}
   </div>`;
 }
 
 function setsScorePanelHTML(m){
-  const rows = m.sets.map((s, i) => `
-    <div class="set-row" data-set-index="${i}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span class="muted" style="min-width:44px;">Set ${i+1}</span>
-      <input type="number" min="0" class="input" style="width:64px; text-align:center;" data-set-score data-team="home" data-set-index="${i}" value="${s.scoreA}" aria-label="Set ${i+1} skor ${escapeHtml(m.groupA)}" />
-      <span class="muted">–</span>
-      <input type="number" min="0" class="input" style="width:64px; text-align:center;" data-set-score data-team="away" data-set-index="${i}" value="${s.scoreB}" aria-label="Set ${i+1} skor ${escapeHtml(m.groupB)}" />
-      <button class="icon-btn" data-remove-set data-set-index="${i}" type="button" aria-label="Buang Set ${i+1}" style="margin-left:auto;">&times;</button>
-    </div>`).join('');
+  // +1/−1 pair per box, alongside the existing direct-type input — additive
+  // fast path for tapping through a live set point-by-point; typing the
+  // final number is still the better choice for an already-finished set.
+  // +1 respects maxSetScore where one exists (Sepak Takraw 17), −1
+  // respects the same 0 floor as everywhere else in this file.
+  const setInputGroup = (team, groupName, setIndex, value) => `
+      <div style="display:flex; align-items:center; gap:4px; min-height:44px;">
+        <span class="muted" style="min-width:36px; white-space:nowrap;">Set ${setIndex+1}</span>
+        <button class="icon-btn icon-btn--minus" data-set-score-delta="-1" data-team="${team}" data-set-index="${setIndex}" type="button" aria-label="Kurangkan skor set ${setIndex+1} ${escapeHtml(groupName)}">&minus;</button>
+        <input type="number" min="0" class="input" style="width:64px; text-align:center;" data-set-score data-team="${team}" data-set-index="${setIndex}" value="${value}" aria-label="Set ${setIndex+1} skor ${escapeHtml(groupName)}" />
+        <button class="icon-btn icon-btn--plus" data-set-score-delta="1" data-team="${team}" data-set-index="${setIndex}" type="button" aria-label="Tambah skor set ${setIndex+1} ${escapeHtml(groupName)}">+</button>
+      </div>`;
+
+  const removeSetRow = setIndex => `
+      <div style="display:flex; align-items:center; justify-content:center; min-height:44px;">
+        <button class="icon-btn" data-remove-set data-set-index="${setIndex}" type="button" aria-label="Buang Set ${setIndex+1}">&times;</button>
+      </div>`;
+
+  const addSetRow = `
+      <div style="display:flex; align-items:center; justify-content:center; min-height:44px;">
+        <button class="btn btn--ghost btn--sm" data-add-set type="button" ${m.sets.length >= 5 ? 'disabled' : ''}>+ Tambah Set</button>
+      </div>`;
+
+  // "+ Tambah Set" is a standalone action for the whole match, not tied to
+  // any one set row — it renders after every × in the center column
+  // (below all of them, or alone if there are no sets yet), never
+  // interleaved between them.
+  const n = m.sets.length;
+  const leftRows = [], centerRows = [], rightRows = [];
+  for(let i = 0; i < n; i++){
+    leftRows.push(setInputGroup('home', m.groupA, i, m.sets[i].scoreA));
+    centerRows.push(removeSetRow(i));
+    rightRows.push(setInputGroup('away', m.groupB, i, m.sets[i].scoreB));
+  }
+  centerRows.push(addSetRow);
+
+  // zone-colored column headings — same zoneColor()/escapeHtml() used
+  // everywhere else a zone name renders. Replaces the earlier standalone
+  // header-row version from the previous prompt now that the columns
+  // themselves carry the color; that header is gone, not duplicated.
+  const heading = color => `min-height:28px; display:flex; align-items:center; border-left:3px solid ${color}; padding-left:var(--sp-2); font-weight:700; font-size:0.82rem; color:var(--ink-800);`;
+
   return `
   <div class="score-panel" style="flex-direction:column; align-items:stretch; gap:var(--sp-3);">
     <div class="muted" style="font-weight:700; color:var(--ink-800);">Set dimenangi: <span style="font-family:var(--font-display); font-size:1.1rem; color:var(--maroon-800);">${m.scoreA}–${m.scoreB}</span></div>
-    <div style="display:flex; flex-direction:column; gap:8px;">
-      ${rows || `<p class="muted" style="margin:0;">Belum ada set direkodkan.</p>`}
+    <div class="sets-columns">
+      <div class="sets-columns__team sets-columns__team--a" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="${heading(zoneColor(m.groupA))}">${escapeHtml(m.groupA)}</div>
+        ${leftRows.join('')}
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; align-items:center;">
+        <div style="min-height:28px;"></div>
+        ${centerRows.join('')}
+      </div>
+      <div class="sets-columns__team sets-columns__team--b" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="${heading(zoneColor(m.groupB))}">${escapeHtml(m.groupB)}</div>
+        ${rightRows.join('')}
+      </div>
     </div>
-    <button class="btn btn--ghost btn--sm" data-add-set type="button" ${m.sets.length >= 5 ? 'disabled' : ''}>+ Tambah Set</button>
   </div>`;
 }
 
@@ -437,7 +500,7 @@ function adminMatchHTML(m){
   const displayLabel = sportDisplayLabel(m.sport, m.category);
   return `
   <div class="card admin-match" data-id="${m.id}">
-    <div class="ribbon ribbon--${m.status}"></div>
+    ${m.status === 'live' ? '<div class="ribbon ribbon--live"></div>' : ''}
     <div class="admin-match__top">
       <div class="admin-match__info">
         <span class="sport-icon">${meta.icon}</span>
@@ -458,6 +521,7 @@ function adminMatchHTML(m){
     <div class="admin-match__actions">
       <button class="btn btn--ghost btn--sm" data-edit type="button">Edit Butiran</button>
       <a class="btn btn--ghost btn--sm" href="schedule.html#match-${m.id}" target="_blank">Lihat Kad Awam ↗</a>
+      <button class="btn btn--danger btn--sm" data-delete type="button">Padam</button>
     </div>
   </div>`;
 }
@@ -476,11 +540,12 @@ function showToast(msg){
 }
 
 // Wires every match-card interaction (status toggle, score +/-, set
-// add/remove/score, throw entry, edit) via event delegation on containerEl.
-// Reused by every admin page that renders adminMatchHTML() cards.
-// onEdit(match) fires when "Edit Butiran" is clicked — admin.html passes a
-// callback that opens its local form modal; admin-sport.html (which has no
-// form modal) passes one that navigates to admin.html instead.
+// add/remove/score, throw entry, edit, delete) via event delegation on
+// containerEl. Reused by every admin page that renders adminMatchHTML()
+// cards. onEdit(match) fires when "Edit Butiran" is clicked — both
+// admin.html and admin-sport.html now pass a callback that opens the
+// shared match-form modal (see wireMatchForm() below) with that match's
+// data. Delete is handled entirely inside this function (confirm + call).
 function wireAdminMatchEvents(containerEl, onEdit){
   containerEl.addEventListener('click', e => {
     const card = e.target.closest('[data-id]');
@@ -490,9 +555,13 @@ function wireAdminMatchEvents(containerEl, onEdit){
     const statusBtn = e.target.closest('[data-status]');
     if(statusBtn){ MatchStore.setStatus(id, statusBtn.dataset.status); showToast('Status dikemas kini'); return; }
 
-    const scoreBtn = e.target.closest('[data-score-action]');
+    const scoreBtn = e.target.closest('[data-score-delta]');
     if(scoreBtn){
-      const delta = scoreBtn.dataset.scoreAction === 'inc' ? 1 : -1;
+      // magnitude comes from the button itself now (±1 or ±5 depending on
+      // sport — see SPORTS[].scoreIncrements), not a hardcoded ±1.
+      // MatchStore.updateScore()'s own Math.max(0, ...) clamp already
+      // floors correctly for any delta size, nothing extra needed here.
+      const delta = parseInt(scoreBtn.dataset.scoreDelta, 10);
       MatchStore.updateScore(id, scoreBtn.dataset.team, delta);
       return;
     }
@@ -511,6 +580,14 @@ function wireAdminMatchEvents(containerEl, onEdit){
 
     const removeSetBtn = e.target.closest('[data-remove-set]');
     if(removeSetBtn){ MatchStore.removeSet(id, parseInt(removeSetBtn.dataset.setIndex, 10)); return; }
+
+    const setScoreDeltaBtn = e.target.closest('[data-set-score-delta]');
+    if(setScoreDeltaBtn){
+      const delta = parseInt(setScoreDeltaBtn.dataset.setScoreDelta, 10);
+      const setIndex = parseInt(setScoreDeltaBtn.dataset.setIndex, 10);
+      MatchStore.adjustSetScore(id, setIndex, setScoreDeltaBtn.dataset.team, delta);
+      return;
+    }
 
     const addThrowBtn = e.target.closest('[data-add-throw]');
     if(addThrowBtn){
@@ -538,6 +615,18 @@ function wireAdminMatchEvents(containerEl, onEdit){
 
     const editBtn = e.target.closest('[data-edit]');
     if(editBtn){ if(typeof onEdit === 'function') onEdit(MatchStore.getById(id)); return; }
+
+    const deleteBtn = e.target.closest('[data-delete]');
+    if(deleteBtn){
+      const match = MatchStore.getById(id);
+      if(!match) return;
+      const label = `${match.groupA} vs ${match.groupB} — ${sportDisplayLabel(match.sport, match.category)}`;
+      if(confirm(`Padam ${label}?`)){
+        MatchStore.deleteMatch(id);
+        showToast('Perlawanan dipadam');
+      }
+      return;
+    }
   });
 
   containerEl.addEventListener('change', e => {
@@ -549,6 +638,202 @@ function wireAdminMatchEvents(containerEl, onEdit){
       showToast('Skor set dikemas kini');
     }
   });
+
+  // Enter on either a Darts throw input or a simple-sport direct-score
+  // input triggers that field's own confirm button ("Tambah Lontaran" /
+  // "Tetapkan") via a real .click() — reuses the exact existing handlers
+  // above instead of duplicating add-throw/set-score logic a second time.
+  // Both buttons stay fully functional on their own; Enter is additive.
+  containerEl.addEventListener('keydown', e => {
+    if(e.key !== 'Enter') return;
+
+    const throwInput = e.target.closest('[data-throw-input]');
+    if(throwInput){
+      e.preventDefault(); // don't let Enter submit a surrounding form
+      const card = e.target.closest('[data-id]');
+      if(!card) return;
+      const btn = card.querySelector(`[data-add-throw][data-team="${throwInput.dataset.team}"]`);
+      if(btn) btn.click();
+      return;
+    }
+
+    const setInput = e.target.closest('[data-set-input]');
+    if(setInput){
+      e.preventDefault();
+      const card = e.target.closest('[data-id]');
+      if(!card) return;
+      const btn = card.querySelector(`[data-set-action][data-team="${setInput.dataset.team}"]`);
+      if(btn) btn.click();
+      return;
+    }
+  });
+}
+
+/* ================================================================
+   MATCH FORM MODAL — shared between admin.html and admin-sport.html,
+   same one-implementation pattern as the score panels above:
+   matchFormModalHTML() returns the modal's markup (insert it once per
+   page), wireMatchForm() wires everything inside it and hands back
+   { openForm } for the calling page to trigger. Neither page keeps its
+   own copy of the form anymore.
+   ================================================================ */
+function matchFormModalHTML(){
+  return `
+  <div class="overlay" id="formOverlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal__head">
+        <span class="eyebrow" id="formTitle">Perlawanan Baharu</span>
+        <button class="modal__close" id="closeForm" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="matchForm">
+          <input type="hidden" id="formId" />
+          <div class="field-row">
+            <div class="field">
+              <label for="formSport">Sukan</label>
+              <div class="select-field">
+                <select class="input" id="formSport"></select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="field">
+              <label for="formVenue">Tempat</label>
+              <div class="select-field">
+                <select class="input" id="formVenue"></select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+          </div>
+          <div class="field" id="formCategoryField" style="margin-top:16px; display:none;">
+            <label for="formCategory">Kategori</label>
+            <div class="select-field">
+              <select class="input" id="formCategory"></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div class="field-row" style="margin-top:16px;">
+            <div class="field">
+              <label for="formGroupA">Kumpulan / Pasukan A</label>
+              <input class="input" id="formGroupA" maxlength="60" required />
+            </div>
+            <div class="field">
+              <label for="formGroupB">Kumpulan / Pasukan B</label>
+              <input class="input" id="formGroupB" maxlength="60" required />
+            </div>
+          </div>
+          <div class="field" style="margin-top:16px;">
+            <label for="formDate">Hari</label>
+            <div class="select-field">
+              <select class="input" id="formDate"></select>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div class="field" style="margin-top:16px;">
+            <label for="formTiktok">URL Siaran Langsung TikTok <span class="field-hint">— pilihan, biarkan kosong jika belum bersiaran</span></label>
+            <input class="input" id="formTiktok" type="url" placeholder="https://www.tiktok.com/@..." />
+          </div>
+          <button class="btn btn--primary btn--block" type="submit" style="margin-top:20px;">Simpan Perlawanan</button>
+        </form>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Wires a matchFormModalHTML() instance already inserted into the page.
+// Returns { openForm(match, defaults) }:
+// - match: pass an existing match object to edit it (pre-filled from its
+//   own data), or null for a brand-new match.
+// - defaults: only used when match is null — { sport, category } to
+//   pre-fill a new match's sport/category (e.g. from admin-sport.html's
+//   own URL params, since the admin already navigated into that specific
+//   context and shouldn't have to re-pick it).
+function wireMatchForm(){
+  const formOverlay = document.getElementById('formOverlay');
+  document.getElementById('formSport').innerHTML = SPORTS.map(s => `<option value="${s.id}">${s.icon} ${s.label}</option>`).join('');
+  document.getElementById('formVenue').innerHTML = VENUES.map(v => `<option value="${v}">${v}</option>`).join('');
+  document.getElementById('formDate').innerHTML = EVENT_DAYS.map((iso,i) => {
+    const { short } = dayLabel(iso);
+    return `<option value="${iso}">Day ${i+1} — ${short}</option>`;
+  }).join('');
+
+  // category selector only exists for sports with a categories list — hidden
+  // and cleared entirely (no disabled empty dropdown left behind) otherwise
+  const formCategoryField = document.getElementById('formCategoryField');
+  const formCategorySelect = document.getElementById('formCategory');
+  function updateCategoryField(sportId, selectedCategoryId){
+    const categories = sportMeta(sportId).categories;
+    if(categories && categories.length){
+      formCategoryField.style.display = '';
+      formCategorySelect.innerHTML = categories.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+      formCategorySelect.value = categories.some(c => c.id === selectedCategoryId) ? selectedCategoryId : categories[0].id;
+      formCategorySelect.required = true;
+    } else {
+      formCategoryField.style.display = 'none';
+      formCategorySelect.innerHTML = '';
+      formCategorySelect.required = false;
+    }
+  }
+  document.getElementById('formSport').addEventListener('change', () => {
+    updateCategoryField(document.getElementById('formSport').value, null);
+  });
+
+  function openForm(match, defaults){
+    const isEdit = !!match;
+    document.getElementById('formTitle').textContent = isEdit ? 'Edit Perlawanan' : 'Perlawanan Baharu';
+    document.getElementById('formId').value = isEdit ? match.id : '';
+    const sportId = isEdit ? match.sport : (defaults && defaults.sport) || SPORTS[0].id;
+    document.getElementById('formSport').value = sportId;
+    document.getElementById('formVenue').value = isEdit ? match.venue : VENUES[0];
+    const categoryId = isEdit ? match.category : (defaults && defaults.category) || null;
+    updateCategoryField(sportId, categoryId);
+    document.getElementById('formGroupA').value = isEdit ? match.groupA : '';
+    document.getElementById('formGroupB').value = isEdit ? match.groupB : '';
+    document.getElementById('formDate').value = isEdit ? match.date : EVENT_DAYS[0];
+    document.getElementById('formTiktok').value = isEdit ? (match.tiktokLiveUrl || '') : '';
+    formOverlay.classList.add('is-open');
+    document.getElementById('formGroupA').focus();
+  }
+  function closeForm(){ formOverlay.classList.remove('is-open'); }
+
+  document.getElementById('closeForm').addEventListener('click', closeForm);
+  formOverlay.addEventListener('click', e => { if(e.target === formOverlay) closeForm(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeForm(); });
+
+  document.getElementById('matchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const id = document.getElementById('formId').value;
+    const sportId = document.getElementById('formSport').value;
+    const hasCategories = !!(sportMeta(sportId).categories && sportMeta(sportId).categories.length);
+    const data = {
+      sport: sportId,
+      category: hasCategories ? document.getElementById('formCategory').value : null,
+      venue: document.getElementById('formVenue').value,
+      groupA: document.getElementById('formGroupA').value.trim(),
+      groupB: document.getElementById('formGroupB').value.trim(),
+      date: document.getElementById('formDate').value,
+      tiktokLiveUrl: document.getElementById('formTiktok').value.trim(),
+    };
+    if(id){
+      data.id = id; // only present when editing — see mock-data.js upsertMatch
+      // changing a match's sport invalidates its old sets/derived score —
+      // e.g. Badminton's 3-set record means nothing once the sport becomes
+      // Futsal's single running score. upsertMatch() only overwrites the
+      // fields present in `data` (Object.assign onto the existing match),
+      // so without this, stale sets/scoreA/scoreB would silently survive
+      // the sport change even though the score panel now shown is wrong.
+      const previous = MatchStore.getById(id);
+      if(previous && previous.sport !== sportId){
+        data.sets = [];
+        data.scoreA = 0;
+        data.scoreB = 0;
+      }
+    }
+    MatchStore.upsertMatch(data);
+    closeForm();
+    showToast(id ? 'Perlawanan dikemas kini' : 'Perlawanan dicipta');
+  });
+
+  return { openForm };
 }
 
 /* ================================================================
@@ -582,22 +867,224 @@ function computeStandings(matches){
     y.points - x.points || y.wins - x.wins || x.name.localeCompare(y.name));
 }
 
+// ================================================================
+// TIE AGGREGATION (Phase B) — math only, not consumed by any UI yet.
+// For isTieAggregated sports (Badminton, Pickleball, Ping Pong, Karom,
+// Dart), every category (MS/WS/MD/WD/XD) played between the same pair
+// of zones contributes toward ONE combined tie result, instead of each
+// category standing alone the way computeStandings() treats every
+// other sport's matches. This is separate math, not a replacement for
+// computeStandings() — a later phase decides how/whether tie results
+// feed into overall standings.
+// ================================================================
+
+// One pair of zones, one tie-sport. Mirrors computeStandings()'s own
+// status filter exactly — only 'finished' matches ever count; 'live'
+// and 'upcoming' are excluded here the same way they are there.
+function computeTieResult(sportId, zoneA, zoneB, matches){
+  let categoriesA = 0, categoriesB = 0, categoriesPlayed = 0;
+  matches
+    .filter(m => m.sport === sportId && m.status === 'finished')
+    .filter(m => m.groupA !== m.groupB) // defensive: exclude a self-matched data anomaly
+    .filter(m =>
+      (m.groupA === zoneA && m.groupB === zoneB) ||
+      (m.groupA === zoneB && m.groupB === zoneA))
+    .forEach(m => {
+      categoriesPlayed++;
+      // scoreA/scoreB belong to groupA/groupB respectively, not to a
+      // fixed "home"/"away" side — resolve to the ACTUAL zone before
+      // comparing, since the same pair can appear with groupA/groupB
+      // flipped across different category matches (e.g. zoneA is
+      // groupA in the MS match but groupB in the WS match).
+      const scoreOfA = m.groupA === zoneA ? m.scoreA : m.scoreB;
+      const scoreOfB = m.groupA === zoneA ? m.scoreB : m.scoreA;
+      if(scoreOfA > scoreOfB) categoriesA++;
+      else if(scoreOfB > scoreOfA) categoriesB++;
+      // else: a genuine draw (possible for Karom, whose 'simple' scoring
+      // can legitimately end tied) — counts toward categoriesPlayed
+      // above, but toward neither zone's count.
+    });
+  return { categoriesA, categoriesB, categoriesPlayed };
+}
+
+// 'level' (0-0, or any equal tally like 1-1/2-2 after some categories
+// have been played) means this pair contributes NO result yet — same
+// as an unplayed match contributes nothing to computeStandings(). The
+// moment one zone leads by even a single category, that lead counts as
+// the live result immediately: standings are meant to update as each
+// category match finishes, not only once a sport's categories are all
+// mathematically decided. A current 2-1 counts now even if a 3rd, 4th,
+// or 5th category hasn't been played yet — that's intentional, not a bug.
+function tieLeader(result){
+  if(result.categoriesA === result.categoriesB) return 'level';
+  return result.categoriesA > result.categoriesB ? 'A' : 'B';
+}
+
+// Point-differential tiebreak — only applies once every category for
+// this sport has been played AND tieLeader() still says 'level' after
+// all of them. A partial 'level' (fewer than the full category count
+// played) is a completely different situation — "not decided yet" —
+// and must fall through unchanged, same as tieLeader() alone already
+// handles it. Wraps tieLeader() rather than changing its signature, so
+// a caller that only wants the plain win-count leader (no tiebreak)
+// still has that available unchanged.
+function resolveTieLeader(sportId, zoneA, zoneB, result, matches){
+  const leader = tieLeader(result);
+  if(leader !== 'level') return leader; // real leader on category wins already — nothing to break the tie for
+
+  const totalCategories = (sportMeta(sportId).categories || []).length;
+  if(result.categoriesPlayed < totalCategories) return 'level'; // still mid-tie, not everything played yet
+
+  // every category played, still level on wins — fall back to total
+  // point differential across every finished category match for this
+  // pair. Duplicates computeTieResult()'s own pair-matching filter
+  // rather than extending that function, since touching it is off
+  // limits here and it already correctly does the win-counting job.
+  let margin = 0;
+  matches
+    .filter(m => m.sport === sportId && m.status === 'finished' && m.groupA !== m.groupB)
+    .filter(m =>
+      (m.groupA === zoneA && m.groupB === zoneB) ||
+      (m.groupA === zoneB && m.groupB === zoneA))
+    .forEach(m => {
+      const scoreOfA = m.groupA === zoneA ? m.scoreA : m.scoreB;
+      const scoreOfB = m.groupA === zoneA ? m.scoreB : m.scoreA;
+      margin += scoreOfA - scoreOfB;
+    });
+
+  if(margin > 0) return 'A';
+  if(margin < 0) return 'B';
+  return 'level'; // genuinely unresolvable: equal on wins AND equal on total points
+}
+
+// Every unique zone-pair with at least one finished category match in
+// this sport, discovered from the data itself — never a hardcoded zone
+// combination list, since which pairs have actually played varies
+// match by match.
+function computeAllTiesForSport(sportId, matches){
+  const pairKeys = new Set();
+  const pairs = [];
+  matches
+    .filter(m => m.sport === sportId && m.status === 'finished' && m.groupA !== m.groupB)
+    .forEach(m => {
+      const [zoneA, zoneB] = [m.groupA, m.groupB].sort();
+      const key = `${zoneA}__${zoneB}`;
+      if(!pairKeys.has(key)){
+        pairKeys.add(key);
+        pairs.push([zoneA, zoneB]);
+      }
+    });
+  return pairs.map(([zoneA, zoneB]) => ({
+    zoneA, zoneB,
+    result: computeTieResult(sportId, zoneA, zoneB, matches),
+  }));
+}
+
+// ================================================================
+// EVENT RANKING & MEDALS (Phase C) — reuses computeStandings() rather
+// than writing new ranking logic; the only new work here is turning a
+// tie-aggregated sport's per-category matches into the "virtual
+// matches" computeStandings() already knows how to rank.
+// ================================================================
+
+// The 15 real PESAWI events, built from SPORTS rather than hardcoded —
+// a tie-aggregated sport (Badminton, Pickleball, Ping Pong, Karom,
+// Dart) is ONE event with no category; every other sport contributes
+// one event per category.
+function getAllEvents(){
+  const events = [];
+  SPORTS.forEach(s => {
+    if(s.isTieAggregated){
+      events.push({ sportId:s.id, category:null });
+    } else if(s.categories && s.categories.length){
+      s.categories.forEach(c => events.push({ sportId:s.id, category:c.id }));
+    } else {
+      events.push({ sportId:s.id, category:null });
+    }
+  });
+  return events;
+}
+
+// Tie-aggregated sport only. For each zone pair discovered by
+// computeAllTiesForSport() (reused as-is, not reimplemented), resolve
+// the pair's leader and synthesize ONE virtual match representing that
+// pair's combined result — then hand the whole synthesized list to the
+// existing, untouched computeStandings() exactly like a real match list.
+function computeTieAggregatedStandings(sportId, matches){
+  const totalCategories = (sportMeta(sportId).categories || []).length;
+  const virtualMatches = [];
+  computeAllTiesForSport(sportId, matches).forEach(({ zoneA, zoneB, result }) => {
+    const leader = resolveTieLeader(sportId, zoneA, zoneB, result, matches);
+    const base = { sport:sportId, category:null, groupA:zoneA, groupB:zoneB, status:'finished' };
+    if(leader === 'A'){
+      virtualMatches.push({ ...base, scoreA:1, scoreB:0 }); // counts now, live — even if not every category's played yet
+    } else if(leader === 'B'){
+      virtualMatches.push({ ...base, scoreA:0, scoreB:1 });
+    } else if(result.categoriesPlayed === totalCategories){
+      virtualMatches.push({ ...base, scoreA:1, scoreB:1 }); // every category played, genuinely still level — a real draw
+    }
+    // else: 'level' with categoriesPlayed < totalCategories — no result
+    // yet for this pair, so nothing is synthesized (same as an unplayed
+    // real match contributing nothing to computeStandings()).
+  });
+  return computeStandings(virtualMatches);
+}
+
+// The single entry point later phases call for one event's standings.
+function computeEventStandings(sportId, category, matches){
+  if(sportMeta(sportId).isTieAggregated){
+    return computeTieAggregatedStandings(sportId, matches);
+  }
+  const filtered = matches.filter(m => m.sport === sportId && m.category === category);
+  return computeStandings(filtered);
+}
+
+// Takes computeStandings()'s ranked output. A position only gets a
+// medal if that zone has points > 0 (a real decided win or draw) —
+// computeStandings() sorts by points descending, so once one position
+// has 0 points every position after it does too; checking each of
+// positions 0/1/2 independently is enough to stop handing out medals
+// the moment real results run out, rather than awarding one to
+// whichever 0-point zone the sort's name-tiebreak happened to place there.
+function assignMedals(rankedStandings){
+  const medals = { gold:null, silver:null, bronze:null };
+  ['gold', 'silver', 'bronze'].forEach((key, i) => {
+    const entry = rankedStandings[i];
+    if(entry && entry.points > 0) medals[key] = entry.name;
+  });
+  return medals;
+}
+
+// Zone color lookup — was duplicated identically in standings.html and
+// sport.html; centralized here so both call the same function instead of
+// keeping their own copies in sync by hand.
+const ZONE_COLORS = {
+  'KK': '#9E4747',
+  'Tawau': '#8D9E47',
+  'Sandakan': '#479E6A',
+  'Lahad Datu': '#476A9E',
+  'Keningau': '#8D479E',
+};
+function zoneColor(name){ return ZONE_COLORS[name] || 'var(--ink-400)'; }
+
 /* ================================================================
    PUBLIC MATCH CARD — shared between index.html (live strip) and
    sport.html (this sport/category's live matches). Relocated out of
-   index.html unchanged. NOTE: still uses plain sportMeta().label, not
-   sportDisplayLabel() — kept byte-identical to index.html's current
-   output for this move. schedule.html has its own separate card
-   renderer (opens a modal instead of linking) and was left untouched.
+   index.html originally, then switched from plain sportMeta().label to
+   sportDisplayLabel() so a categorized sport's card actually shows its
+   category (e.g. "Futsal (Veteran)"), not just "Futsal" — this had been
+   flagged as a leftover gap since the move and stayed unfixed until now.
+   schedule.html has its own separate card renderer (opens a modal
+   instead of linking) and was left untouched.
    ================================================================ */
 function publicMatchCardHTML(m){
   const meta = sportMeta(m.sport);
   return `
   <a class="card match-card" href="schedule.html#match-${m.id}" style="text-decoration:none;">
-    <div class="ribbon ribbon--${m.status}"></div>
+    ${m.status === 'live' ? '<div class="ribbon ribbon--live"></div>' : ''}
     <div class="match-card__body">
       <div class="match-card__top">
-        <span class="sport-tag"><span class="sport-icon">${meta.icon}</span>${meta.label}</span>
+        <span class="sport-tag"><span class="sport-icon">${meta.icon}</span>${sportDisplayLabel(m.sport, m.category)}</span>
         ${statusBadgeHTML(m.status)}
       </div>
       <div class="match-card__teams">

@@ -38,6 +38,7 @@
 
   <div class="admin-toolbar">
     <h1 class="page-title" id="sportPageTitle">Sukan</h1>
+    <button class="btn btn--gold" id="newMatchBtn" type="button">+ Perlawanan Baharu</button>
   </div>
   <div class="chip-row" id="sportDayChips" style="margin-bottom:20px;"></div>
   <div id="sportMatchList" class="admin-list"></div>
@@ -116,9 +117,19 @@
     list.innerHTML = filtered.length === 0 ? sportEmptyStateHTML() : filtered.map(adminMatchHTML).join('');
   }
 
-  // "Edit Butiran" has no form modal on this page (scope cut — see summary),
-  // so it just sends the scorekeeper to admin.html where editing works today
-  wireAdminMatchEvents(document.getElementById('sportMatchList'), () => { location.href = 'admin.html'; });
+  // ---------------- MATCH FORM (shared with admin.html) ----------------
+  document.body.insertAdjacentHTML('beforeend', matchFormModalHTML());
+  const { openForm } = wireMatchForm();
+
+  // "+ Perlawanan Baharu" pre-fills sport/category from this page's own
+  // URL params — the admin already navigated into that specific context,
+  // so a brand-new match here shouldn't make them re-pick what they just chose.
+  document.getElementById('newMatchBtn').addEventListener('click', () => {
+    openForm(null, { sport: sportParam, category: categoryParam });
+  });
+
+  // "Edit Butiran" now opens the shared modal inline instead of redirecting.
+  wireAdminMatchEvents(document.getElementById('sportMatchList'), match => openForm(match));
 
   // ---- show skeletons briefly, then subscribe (same simulated-fetch
   // pattern as every other page in this app) ----

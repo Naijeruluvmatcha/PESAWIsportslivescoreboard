@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pilih Sukan — PESAWI 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap site-header__row">
+    <a class="brand" href="index.html" style="text-decoration:none;">
+      <img class="brand__mark" src="assets/pesawi-icon.png" alt="Logo PESAWI" style="width:auto;height:44px;border-radius:0;background:none;object-fit:contain;" />
+      <div class="brand__text">
+        <span class="brand__title">PESAWI 2026</span>
+        <span class="brand__sub">Skor langsung · paparan awam</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-link" href="standings.html">Kedudukan</a>
+      <a class="nav-link" href="schedule.html">Jadual Perlawanan</a>
+      <a class="nav-link nav-link--gold" href="admin.html">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20a7 7 0 0 1 14 0"/></svg>
+        Jurucatat Skor
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Mirrors admin.html's Hub view-swapping pattern (hubMainView/
+       hubCategoryView) as closely as possible: same underlying grid ->
+       category-picker logic, public styling, different destination
+       (sport.html instead of admin-sport.html). -->
+  <div id="pickerMainView">
+    <div class="standings-lead">
+      <h1 class="page-title">Pilih Sukan</h1>
+      <p class="muted">Pilih sukan untuk melihat kedudukan dan perlawanan</p>
+    </div>
+    <div id="pickerSportGrid" class="sport-breakdown-grid" style="padding-bottom:var(--sp-7);"></div>
+  </div>
+
+  <div id="pickerCategoryView" style="display:none;">
+    <button class="btn btn--ghost btn--sm" id="pickerBackBtn" type="button" style="margin:var(--sp-5) 0;">← Kembali</button>
+    <div class="standings-lead" style="padding-top:0;">
+      <h1 class="page-title" id="pickerCategoryHeading">Sukan</h1>
+      <p class="muted">Pilih kumpulan</p>
+    </div>
+    <div id="pickerCategoryGrid" class="sport-breakdown-grid" style="padding-bottom:var(--sp-7);"></div>
+  </div>
+</main>
+
+<script src="mock-data.js"></script>
+<script>
+(function(){
+  function scoringFormatLabel(sport){
+    if(sport.scoringType === 'sets') return 'Format set';
+    if(sport.scoringType === 'countdown') return `Countdown ${sport.startValue}`;
+    return 'Mata terkumpul';
+  }
+
+  function sportCardHTML(s){
+    const subtitle = (s.categories && s.categories.length)
+      ? `${s.categories.length} kumpulan`
+      : scoringFormatLabel(s);
+    return `
+    <button class="card sport-breakdown-card" data-sport="${s.id}" type="button" style="align-items:center; text-align:center; gap:6px;">
+      <span style="font-size:2rem; line-height:1;">${s.icon}</span>
+      <span class="section-title">${s.label}</span>
+      <span class="muted">${subtitle}</span>
+    </button>`;
+  }
+
+  function showMainView(){
+    document.getElementById('pickerCategoryView').style.display = 'none';
+    document.getElementById('pickerMainView').style.display = 'block';
+  }
+
+  // branches on categories truthiness rather than assuming every sport
+  // always has one — currently all 9 do, but this stays correct if that
+  // ever changes, same defensive pattern as the Admin Hub it mirrors
+  function showCategoryView(meta){
+    document.getElementById('pickerCategoryHeading').textContent = meta.label;
+    const grid = document.getElementById('pickerCategoryGrid');
+    grid.innerHTML = meta.categories.map(c => `
+      <button class="card sport-breakdown-card" data-category="${c.id}" type="button" style="align-items:center; text-align:center;">
+        <span class="section-title">${c.label}</span>
+      </button>`).join('');
+    // reassigned fresh each time this view is entered — safe against
+    // duplicate-listener buildup, same pattern as the Admin Hub's own
+    // category grid
+    grid.onclick = e => {
+      const btn = e.target.closest('[data-category]');
+      if(!btn) return;
+      location.href = `sport.html?sport=${meta.id}&category=${btn.dataset.category}`;
+    };
+    document.getElementById('pickerMainView').style.display = 'none';
+    document.getElementById('pickerCategoryView').style.display = 'block';
+  }
+
+  document.getElementById('pickerSportGrid').innerHTML = SPORTS.map(sportCardHTML).join('');
+  document.getElementById('pickerSportGrid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-sport]');
+    if(!btn) return;
+    const meta = sportMeta(btn.dataset.sport);
+    if(meta.categories && meta.categories.length){
+      showCategoryView(meta);
+    } else {
+      location.href = `sport.html?sport=${meta.id}`;
+    }
+  });
+  document.getElementById('pickerBackBtn').addEventListener('click', showMainView);
+})();
+</script>
+</body>
+</html>
