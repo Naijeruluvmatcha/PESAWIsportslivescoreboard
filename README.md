@@ -15,10 +15,6 @@ or computer, no app to download. There are two sides to it:
 - **The admin side** — only for scorekeepers. They log in, pick a
   sport, and update scores as matches are actually played.
 
-## Who's competing?
-
-Five zones: **KK, Tawau, Sandakan, Lahad Datu, and Keningau.**
-
 ## What sports are covered?
 
 Badminton, Sepak Takraw, Pickleball, Ping Pong, Bola Tampar, Futsal,
